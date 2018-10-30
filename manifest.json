@@ -2,12 +2,17 @@
     "manifest_version": 2,
     "name": "Switch to audible tab",
     "version": "0.0.1",
-    "description": "Switch to tab that is currently making sound.",
+    "description": "Focus on tab that is currently making sound (Alt+Shift+A).",
     "icons": {
         "128": "img/icon.png"
     },
     "background": {
         "scripts": ["src/background.js"]
+    },
+    "options_ui": {
+        "page": "static/settings.html",
+        "browser_style": false,
+        "open_in_tab": false
     },
     "browser_action": {
         "default_icon": {
@@ -23,6 +28,6 @@
         }
     },
     "permissions": [
-        "tabs", "storage", "windows"
+        "tabs", "storage"
     ]
 }

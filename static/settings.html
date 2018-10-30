@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>Switch to audible tab - settings</title>
+    <script src="../src/settings.js"></script>
+    <style>
+     #logo {
+       width: 30px;
+       height: 30px;
+       vertical-align: middle;
+     }
+     body {
+       overflow-y: hidden;
+       font: 400 17px/1.43 'PT Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen-Sans, Cantarell, 'Helvetica Neue', sans-serif;
+       min-height: 200px;
+     }
+     input[type=checkbox] {
+       vertical-align: middle;
+       margin-top: -2px;
+     }
+    </style>
+  </head>
+  <body>
+    <h1><img id="logo" src="../img/icon.png" alt="logo"> settings</h1>
+    <input type="checkbox" id="include-muted"><label for="include-muted">Include muted tabs</label><br>
+    <input type="checkbox" id="all-windows"><label for="all-windows">Search for audible tabs in all windows</label>
+  </body>
+</html>
