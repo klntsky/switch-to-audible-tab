@@ -1,7 +1,7 @@
 {
     "manifest_version": 2,
     "name": "Switch to audible tab",
-    "version": "0.0.2",
+    "version": "0.0.3",
     "description": "Focus on tab that is currently making sound (Alt+Shift+A).",
     "icons": {
         "128": "img/128.png"
