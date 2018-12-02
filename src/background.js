@@ -6,6 +6,22 @@ const defaults = {
 };
 
 
+// A flag indicating that no tabs are selected by queries.
+const NoTabs = Symbol('NoTabs');
+// A flag indicating that the tab switching cycle was ended.
+const FromStart = Symbol('FromStart');
+
+
+let settings = null;
+// First active tab, i.e. the tab that was active when the user started
+// cycling through audible tabs.
+let firstActive = null; // or { id: <tab id>, windowId: <window id>, ... }
+// Whether we are waiting for tab activation (semaphore variable for switchTo)
+let waitingForActivation = false;
+
+const query = browser.tabs.query;
+
+
 /** Returns active tab in the current window. */
 const getActiveTab = async () => {
     return browser.tabs.query({ active: true, currentWindow: true })
@@ -39,21 +55,6 @@ const nextTab = (tabs, activeTab) => {
     return FromStart;
 };
 
-
-// A flag indicating that no tabs are selected by queries.
-const NoTabs = Symbol('NoTabs');
-// A flag indicating that the tab switching cycle was ended.
-const FromStart = Symbol('FromStart');
-
-
-let settings = null;
-// First active tab, i.e. the tab that was active when the user started
-// cycling through audible tabs.
-let firstActive = null; // or { id: <tab id>, windowId: <window id>, ... }
-// Whether we are waiting for tab activation (semaphore variable for switchTo)
-let waitingForActivation = false;
-
-const query = browser.tabs.query;
 
 loadSettings().then(s => settings = s);
 getActiveTab().then(tab => firstActive = tab);
@@ -116,6 +117,9 @@ browser.browserAction.onClicked.addListener(async () => {
 
     if (settings.includeMuted)
         tabs = tabs.concat(await query(refine({ muted: true })));
+
+    if (firstActive)
+        tabs = tabs.filter(tab => tab.id !== firstActive.id);
 
     const next = nextTab(tabs, activeTab);
 
