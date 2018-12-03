@@ -35,6 +35,21 @@ const loadSettings = () => browser.storage.local.get({
 }).then(r => r.settings);
 
 
+const sortTabs = tabs => {
+    if (firstActive)
+        tabs = tabs.concat([firstActive]);
+
+    // Sort by windowIds, then by indices.
+    tabs = tabs.sort((a, b) => a.windowId - b.windowId || a.index - b.index);
+
+    let ix = tabs.findIndex(x => x === firstActive);
+    if (ix != -1) {
+        tabs = tabs.slice(ix + 1).concat(tabs.slice(0, ix));
+    }
+
+    return tabs;
+};
+
 /** Given an array of tabs and the active tab, returns next tab's ID.
     @param tabs {Tab[]}
     @param activeTab {Tab}
@@ -70,13 +85,15 @@ browser.tabs.onRemoved.addListener(tabId => {
 
 // Track the last active tab which was activated by the user or another
 // extension
-browser.tabs.onActivated.addListener(({ tabId, windowId }) => {
+browser.tabs.onActivated.addListener(async ({ tabId, windowId }) => {
     if (waitingForActivation) {
         waitingForActivation = false;
     } else {
+        const index = (await query({}).then(r => r.find(r => r.id == tabId))).index;
+
         // This tab was activated by the user or another extension,
         // therefore we need to set it as firstActive.
-        firstActive = { id: tabId, windowId };
+        firstActive = { id: tabId, windowId, index };
     }
 });
 
@@ -125,6 +142,8 @@ browser.browserAction.onClicked.addListener(async () => {
 
     if (settings.includeMuted)
         tabs = tabs.concat(await query(refine({ muted: true })));
+
+    tabs = sortTabs(tabs);
 
     if (firstActive)
         tabs = tabs.filter(tab => tab.id !== firstActive.id);
