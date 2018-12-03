@@ -12,4 +12,6 @@ If there are no audible tabs, the addon will do nothing. Tabs that are muted by 
 
 If there are audible tabs belonging to other windows, these windows will be switched too (this can be opted off as well).
 
+It is also possible to control the order in which the tabs will be visited: available options are 'left-to-right' and 'right-to-left'. This will only make difference if there are more than two tabs in a cycle.
+
 **Alt+Shift+A** is the hotkey that can be used instead of the toolbar button.
