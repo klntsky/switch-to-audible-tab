@@ -2,16 +2,18 @@
 const defaults = {
     includeMuted: true,
     allWindows: true,
-    includeFirst: true
+    includeFirst: true,
+    sortBackwards: false,
 };
 
-let muted, all, first;
+let muted, all, first, sort;
 
 function save () {
     browser.storage.local.set({ settings: {
         includeMuted: muted.checked,
         allWindows: all.checked,
-        includeFirst: first.checked
+        includeFirst: first.checked,
+        sortBackwards: sort.checked,
     }});
 }
 
@@ -20,12 +22,14 @@ async function load () {
     muted = document.querySelector('#include-muted');
     all = document.querySelector('#all-windows');
     first = document.querySelector('#include-first');
+    sort = document.querySelector('#sort-backwards');
 
     muted.checked = settings.includeMuted;
     all.checked = settings.allWindows;
     first.checked = settings.includeFirst;
+    sort.checked = settings.sortBackwards;
 
-    [muted, all, first].forEach(e => e.onchange = save);
+    [muted, all, first, sort].forEach(e => e.onchange = save);
 }
 
 document.addEventListener('DOMContentLoaded', load);

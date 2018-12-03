@@ -2,7 +2,8 @@
 const defaults = {
     includeMuted: true,
     allWindows: true,
-    includeFirst: true
+    includeFirst: true,
+    sortBackwards: false,
 };
 
 
@@ -40,7 +41,13 @@ const sortTabs = tabs => {
         tabs = tabs.concat([firstActive]);
 
     // Sort by windowIds, then by indices.
-    tabs = tabs.sort((a, b) => a.windowId - b.windowId || a.index - b.index);
+    tabs = tabs.sort((a, b) => {
+        let ordering = a.windowId - b.windowId || a.index - b.index;
+        if (settings.sortBackwards) {
+            ordering *= -1;
+        }
+        return ordering;
+    });
 
     let ix = tabs.findIndex(x => x === firstActive);
     if (ix != -1) {
