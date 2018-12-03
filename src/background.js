@@ -18,7 +18,7 @@ let settings = null;
 let firstActive = null; // or { id: <tab id>, windowId: <window id>, ... }
 // Whether we are waiting for tab activation (semaphore variable for switchTo)
 let waitingForActivation = false;
-
+let lastTabs = [];
 const query = browser.tabs.query;
 
 
@@ -81,6 +81,14 @@ browser.tabs.onActivated.addListener(({ tabId, windowId }) => {
 });
 
 
+browser.windows.onFocusChanged.addListener(async (windowId) => {
+    const activeTab = await getActiveTab();
+    if (lastTabs.every(tab => tab.id !== activeTab.id)) {
+        firstActive = activeTab;
+    }
+});
+
+
 browser.browserAction.onClicked.addListener(async () => {
     const switchTo = async (tab, activeTab) => {
         if (!tab  || tab.id === activeTab.id || waitingForActivation)
@@ -120,6 +128,8 @@ browser.browserAction.onClicked.addListener(async () => {
 
     if (firstActive)
         tabs = tabs.filter(tab => tab.id !== firstActive.id);
+
+    lastTabs = tabs;
 
     const next = nextTab(tabs, activeTab);
 
