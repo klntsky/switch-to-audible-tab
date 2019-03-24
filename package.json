@@ -1,0 +1,18 @@
+{
+  "name": "switch-to-audible-tab",
+  "private": true,
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "build": "spago build && spago bundle --to static/settings.js && npm run uglify",
+    "uglify": "uglifyjs static/settings.js --compress --mangle --output static/settings.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://gitlab.com/klntsky/switch-to-audible-tab.git"
+  },
+  "devDependencies": {
+    "bower": "^1.8.8",
+    "pulp": "^12.3.1",
+    "uglify-js": "^3.5.2"
+  }
+}

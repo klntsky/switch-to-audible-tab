@@ -1,3 +1,5 @@
+/* global browser */
+
 /** Default settings */
 const defaults = {
     includeMuted: true,
@@ -21,7 +23,32 @@ let firstActive = null; // or { id: <tab id>, windowId: <window id>, ... }
 let waitingForActivation = false;
 let lastTabs = [];
 const query = browser.tabs.query;
+// Tabs marked as audible by the user
+let marked = [];
 
+const menu = browser.menus.create({
+  id: "open-settings",
+  type: "checkbox",
+  title: "Mark this tab as audible",
+  contexts: ["browser_action", "tab"],
+});
+
+
+const addMarkedTab = tab => {
+  if (!marked.some(mkd => mkd.id === tab.id)) {
+    marked.push(tab);
+  }
+};
+
+const removeMarkedTab = tab => {
+  marked = marked.filter(mkd => mkd.id !== tab.id);
+};
+
+const updateIcon = isChecked => {
+    browser.browserAction.setIcon({
+        path: isChecked ? 'img/icon-checked.png' : 'img/128.png'
+    });
+};
 
 /** Returns active tab in the current window. */
 const getActiveTab = async () => {
@@ -87,12 +114,17 @@ browser.tabs.onRemoved.addListener(tabId => {
     if (firstActive.id === tabId) {
         firstActive = null;
     }
+    marked = marked.filter(mkd => mkd.id !== tabId);
 });
 
 
 // Track the last active tab which was activated by the user or another
 // extension
 browser.tabs.onActivated.addListener(async ({ tabId, windowId }) => {
+    const checked = marked.some(mkd => mkd.id === tabId);
+    browser.menus.update("open-settings", { checked });
+    updateIcon(checked);
+
     if (waitingForActivation) {
         waitingForActivation = false;
     } else {
@@ -107,6 +139,8 @@ browser.tabs.onActivated.addListener(async ({ tabId, windowId }) => {
 
 browser.windows.onFocusChanged.addListener(async (windowId) => {
     const activeTab = await getActiveTab();
+    const checked = marked.some(mkd => mkd.id === activeTab.id);
+    updateIcon(checked);
     if (lastTabs.every(tab => tab.id !== activeTab.id)) {
         firstActive = activeTab;
     }
@@ -150,6 +184,8 @@ browser.browserAction.onClicked.addListener(async () => {
     if (settings.includeMuted)
         tabs = tabs.concat(await query(refine({ muted: true })));
 
+    tabs = tabs.concat(marked);
+
     tabs = sortTabs(tabs);
 
     if (firstActive)
@@ -179,5 +215,30 @@ browser.browserAction.onClicked.addListener(async () => {
 
     default:
         await switchTo(next, activeTab);
+    }
+});
+
+browser.menus.onShown.addListener(async function(info, tab) {
+    if (info.menuIds.includes("open-settings") &&
+        info.viewType === "sidebar") {
+        const checked = marked.some(mkd => mkd.id === tab.id);
+        await browser.menus.update("open-settings", { checked });
+        await browser.menus.refresh();
+    }
+});
+
+browser.menus.onClicked.addListener(async function(info, tab) {
+    console.log(arguments);
+    const activeTab = await getActiveTab();
+    if (info.menuItemId === "open-settings") {
+        if (info.checked) {
+            addMarkedTab(tab);
+        } else {
+            removeMarkedTab(tab);
+        }
+
+        if (activeTab.id === tab.id) {
+            updateIcon(info.checked);
+        }
     }
 });
