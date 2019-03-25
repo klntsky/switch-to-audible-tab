@@ -6,6 +6,8 @@ const defaults = {
     allWindows: true,
     includeFirst: true,
     sortBackwards: false,
+    menuOnTab: true,
+    menuOnButton: true,
 };
 
 
@@ -25,13 +27,7 @@ let lastTabs = [];
 const query = browser.tabs.query;
 // Tabs marked as audible by the user
 let marked = [];
-
-const menu = browser.menus.create({
-  id: "open-settings",
-  type: "checkbox",
-  title: "Mark this tab as audible",
-  contexts: ["browser_action", "tab"],
-});
+const MENU_ID = "mark-as-audible";
 
 
 const addMarkedTab = tab => {
@@ -40,15 +36,18 @@ const addMarkedTab = tab => {
   }
 };
 
+
 const removeMarkedTab = tab => {
   marked = marked.filter(mkd => mkd.id !== tab.id);
 };
+
 
 const updateIcon = isChecked => {
     browser.browserAction.setIcon({
         path: isChecked ? 'img/icon-checked.png' : 'img/128.png'
     });
 };
+
 
 /** Returns active tab in the current window. */
 const getActiveTab = async () => {
@@ -62,6 +61,13 @@ const loadSettings = () => browser.storage.local.get({
     settings: defaults
 }).then(r => r.settings);
 
+
+browser.storage.onChanged.addListener((changes, area) => {
+    if (typeof changes.settings === 'object') {
+        settings = changes.settings.newValue;
+        updateMenuContexts(settings);
+    }
+});
 
 const sortTabs = tabs => {
     if (firstActive)
@@ -84,6 +90,7 @@ const sortTabs = tabs => {
     return tabs;
 };
 
+
 /** Given an array of tabs and the active tab, returns next tab's ID.
     @param tabs {Tab[]}
     @param activeTab {Tab}
@@ -104,8 +111,39 @@ const nextTab = (tabs, activeTab) => {
     return FromStart;
 };
 
+browser.menus.create({
+    id: MENU_ID,
+    type: "checkbox",
+    title: "Mark this tab as audible",
+    contexts: ["browser_action"],
+});
 
-loadSettings().then(s => settings = s);
+const updateMenuContexts = async settings => {
+
+    const contexts = [];
+    if (settings.menuOnTab) {
+        contexts.push("tab");
+    }
+    if (settings.menuOnButton) {
+        contexts.push("browser_action");
+    }
+
+    if (contexts.length) {
+        await browser.menus.update(MENU_ID, {
+            contexts
+        });
+    } else {
+        await browser.menus.remove(MENU_ID);
+    }
+};
+
+
+loadSettings().then(async s => {
+    settings = s;
+    await updateMenuContexts(settings);
+});
+
+
 getActiveTab().then(tab => firstActive = tab);
 
 
@@ -122,7 +160,8 @@ browser.tabs.onRemoved.addListener(tabId => {
 // extension
 browser.tabs.onActivated.addListener(async ({ tabId, windowId }) => {
     const checked = marked.some(mkd => mkd.id === tabId);
-    browser.menus.update("open-settings", { checked });
+    // no need to await
+    browser.menus.update(MENU_ID, { checked });
     updateIcon(checked);
 
     if (waitingForActivation) {
@@ -168,6 +207,7 @@ browser.browserAction.onClicked.addListener(async () => {
     };
 
     settings = await loadSettings();
+    await updateMenuContexts(settings);
     const activeTab = await getActiveTab();
     let tabs = [];
 
@@ -218,19 +258,28 @@ browser.browserAction.onClicked.addListener(async () => {
     }
 });
 
+
 browser.menus.onShown.addListener(async function(info, tab) {
-    if (info.menuIds.includes("open-settings") &&
-        info.viewType === "sidebar") {
-        const checked = marked.some(mkd => mkd.id === tab.id);
-        await browser.menus.update("open-settings", { checked });
+    if (info.menuIds.includes(MENU_ID)) {
+        let checked = false;
+
+        if (info.viewType === "sidebar") {
+            checked = marked.some(mkd => mkd.id === tab.id);
+        } else if (typeof info.viewType === 'undefined') {
+            // clicked the toolbar button
+            const activeTab = await getActiveTab();
+            checked = marked.some(mkd => mkd.id === activeTab.id);
+        }
+
+        await browser.menus.update(MENU_ID, { checked });
         await browser.menus.refresh();
     }
 });
 
+
 browser.menus.onClicked.addListener(async function(info, tab) {
-    console.log(arguments);
     const activeTab = await getActiveTab();
-    if (info.menuItemId === "open-settings") {
+    if (info.menuItemId === MENU_ID) {
         if (info.checked) {
             addMarkedTab(tab);
         } else {

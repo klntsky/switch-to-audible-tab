@@ -2,14 +2,13 @@ module Settings where
 
 import Prelude
 
-import SettingsFFI (save)
 import Data.Maybe (Maybe(..))
-
-import Halogen as H
 import Effect.Aff (Aff)
+import Halogen as H
 import Halogen.HTML as HH
 import Halogen.HTML.Events as HE
 import Halogen.HTML.Properties as HP
+import SettingsFFI (save)
 
 
 type State =
@@ -17,6 +16,8 @@ type State =
   , allWindows :: Boolean
   , includeFirst :: Boolean
   , sortBackwards :: Boolean
+  , menuOnTab :: Boolean
+  , menuOnButton :: Boolean
   }
 
 
@@ -25,6 +26,8 @@ data CheckBox
   | AllWindows
   | IncludeFirst
   | SortBackwards
+  | MenuOnTab
+  | MenuOnButton
 
 
 data Query a
@@ -40,6 +43,8 @@ initialState =
     , allWindows: true
     , includeFirst: true
     , sortBackwards: false
+    , menuOnTab: true
+    , menuOnButton: true
     }
 
 
@@ -53,13 +58,10 @@ mkComponent state = H.component
   where
 
   render :: State -> H.ComponentHTML Query
-  render { includeMuted, allWindows, includeFirst, sortBackwards } =
+  render { includeMuted, allWindows, includeFirst, sortBackwards
+         , menuOnTab, menuOnButton } =
     HH.div_
-    [ HH.h1_ [ HH.img [ HP.id_ "logo"
-                      , HP.src "../img/128.png"
-                      , HP.alt "logo" ]
-             , HH.text "settings"
-             ]
+    [ HH.h3_ [ HH.text "GENERAL SETTINGS" ]
 
     , HH.div_
       [ HH.input [ HP.type_ HP.InputCheckbox
@@ -85,6 +87,17 @@ mkComponent state = H.component
 
     , HH.div_
       [ HH.input [ HP.type_ HP.InputCheckbox
+                 , HP.checked sortBackwards
+                 , HE.onChecked (HE.input (Toggle SortBackwards))
+                 , HP.id_ "sortBackwards"
+                 ]
+      , HH.label
+        [ HP.for "sortBackwards" ]
+        [ HH.text "When cycling through tabs, visit them in reverse order (i.e. right-to-left)" ]
+      ]
+
+    , HH.div_
+      [ HH.input [ HP.type_ HP.InputCheckbox
                  , HP.checked includeFirst
                  , HE.onChecked (HE.input (Toggle IncludeFirst))
                  , HP.id_ "includeFirst"
@@ -94,25 +107,43 @@ mkComponent state = H.component
         [ HH.text "When cycling through tabs, also include first tab from which the cycle was started" ]
       ]
 
+    , HH.h3_ [ HH.text "CONTEXT MENUS" ]
+    , HH.text "Context menus allow to manually mark tabs as audible."
+    , HH.br_
+    , HH.br_
+
     , HH.div_
       [ HH.input [ HP.type_ HP.InputCheckbox
-                 , HP.checked sortBackwards
-                 , HE.onChecked (HE.input (Toggle SortBackwards))
-                 , HP.id_ "sortBackwards"
+                 , HP.checked menuOnTab
+                 , HE.onChecked (HE.input (Toggle MenuOnTab))
+                 , HP.id_ "menuOnTab"
                  ]
       , HH.label
-        [ HP.for "sortBackwards" ]
-        [ HH.text "When cycling through tabs, visit them in reverse order (i.e. right-to-left)" ]
+        [ HP.for "menuOnTab" ]
+        [ HH.text "Enable for tabs" ]
+      ]
+
+    , HH.div_
+      [ HH.input [ HP.type_ HP.InputCheckbox
+                 , HP.checked menuOnButton
+                 , HE.onChecked (HE.input (Toggle MenuOnButton))
+                 , HP.id_ "menuOnButton"
+                 ]
+      , HH.label
+        [ HP.for "menuOnButton" ]
+        [ HH.text "Enable for toolbar button" ]
       ]
     ]
 
   eval :: Query ~> H.ComponentDSL State Query Message Aff
   eval (Toggle checkbox value next) = do
-    H.modify_ (case checkbox of
+    H.modify_ case checkbox of
       IncludeMuted  -> (_ { includeMuted  = value })
       AllWindows    -> (_ { allWindows    = value })
       IncludeFirst  -> (_ { includeFirst  = value })
-      SortBackwards -> (_ { sortBackwards = value }))
+      SortBackwards -> (_ { sortBackwards = value })
+      MenuOnTab     -> (_ { menuOnTab     = value })
+      MenuOnButton  -> (_ { menuOnButton  = value })
     values <- H.get
     H.liftAff (save values)
     pure next
