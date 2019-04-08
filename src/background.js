@@ -6,8 +6,8 @@ const defaults = {
     allWindows: true,
     includeFirst: true,
     sortBackwards: false,
-    menuOnTab: true,
-    menuOnButton: true,
+    menuOnTab: false,
+    markAsAudible: []
 };
 
 
@@ -66,6 +66,7 @@ browser.storage.onChanged.addListener((changes, area) => {
     if (typeof changes.settings === 'object') {
         settings = changes.settings.newValue;
         updateMenuContexts(settings);
+        console.log('updated', settings);
     }
 });
 
@@ -119,22 +120,14 @@ browser.menus.create({
 });
 
 const updateMenuContexts = async settings => {
-
-    const contexts = [];
+    const contexts = ["browser_action"];
     if (settings.menuOnTab) {
         contexts.push("tab");
     }
-    if (settings.menuOnButton) {
-        contexts.push("browser_action");
-    }
 
-    if (contexts.length) {
-        await browser.menus.update(MENU_ID, {
-            contexts
-        });
-    } else {
-        await browser.menus.remove(MENU_ID);
-    }
+    await browser.menus.update(MENU_ID, {
+        contexts
+    });
 };
 
 
@@ -206,7 +199,6 @@ browser.browserAction.onClicked.addListener(async () => {
         waitingForActivation = false;
     };
 
-    settings = await loadSettings();
     await updateMenuContexts(settings);
     const activeTab = await getActiveTab();
     let tabs = [];
@@ -224,7 +216,20 @@ browser.browserAction.onClicked.addListener(async () => {
     if (settings.includeMuted)
         tabs = tabs.concat(await query(refine({ muted: true })));
 
-    tabs = tabs.concat(marked);
+    if (marked.length)
+        tabs = tabs.concat(marked);
+
+    const permanentlyMarked = settings.markAsAudible.reduce(
+        (acc, { domain, enabled, withSubdomains }) => {
+            if (enabled) {
+                acc.push(withSubdomains ? `*://*.${domain}/*` : `*://${domain}/*`);
+            }
+            return acc;
+        }, []
+    );
+
+    if (permanentlyMarked.length)
+        tabs = tabs.concat(await query(refine({ url: permanentlyMarked })));
 
     tabs = sortTabs(tabs);
 

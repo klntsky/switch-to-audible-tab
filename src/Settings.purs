@@ -1,37 +1,47 @@
 module Settings where
 
-import Prelude
-
 import Data.Array (mapWithIndex)
 import Data.Array as A
-import Data.Lens (set, (%~))
+import Data.Lens (over, set, view, (%~))
 import Data.Lens.Index (ix)
 import Data.Lens.Record (prop)
 import Data.Maybe (Maybe(..), fromMaybe)
+import Data.Newtype (wrap)
 import Data.Symbol (SProxy(..))
+import Data.Traversable (for_)
 import Effect.Aff (Aff)
 import Halogen as H
 import Halogen.HTML (HTML, br_, div_, h3_, input, label, text)
 import Halogen.HTML.Events (onChecked, onClick)
 import Halogen.HTML.Events as HE
-import Halogen.HTML.Properties
-import SettingsFFI (save)
-import Web.HTML (window)
-import Web.HTML.Window (confirm)
+import Halogen.HTML.Properties (InputType(..), checked, class_, for, id_, ref, type_, value, title)
+import Prelude
+import SettingsFFI as FFI
+
 
 type State =
+  { pageState :: PageState
+  , validationResult :: ValidationResult
+  , settings :: Settings
+  }
+
+data PageState = Normal | RestoreConfirmation
+
+derive instance eqPageState :: Eq PageState
+
+type ValidationResult = Array Boolean
+
+type Settings =
   { includeMuted :: Boolean
   , allWindows :: Boolean
   , includeFirst :: Boolean
   , sortBackwards :: Boolean
   , menuOnTab :: Boolean
-  , menuOnButton :: Boolean
   , markAsAudible :: Array { domain :: String
                            , enabled :: Boolean
                            , withSubdomains :: Boolean
                            }
   }
-
 
 data CheckBox
   = IncludeMuted
@@ -39,15 +49,15 @@ data CheckBox
   | IncludeFirst
   | SortBackwards
   | MenuOnTab
-  | MenuOnButton
   | FilterEnabled Int
   | FilterWithSubdomains Int
-
 
 data Button
   = RemoveDomain Int
   | RestoreDefaults
-
+  | AddDomain
+  | ConfirmRestore
+  | CancelRestore
 
 data Input
   = DomainField Int String
@@ -58,47 +68,43 @@ data Query a
   | Click Button a
   | TextInput Input a
 
+type Action = Unit
 
-type Message = Unit
+data Message = Unit
 
-
-initialState :: State
-initialState =
-    { includeMuted: true
-    , allWindows: true
-    , includeFirst: true
-    , sortBackwards: false
-    , menuOnTab: true
-    , menuOnButton: true
-    , markAsAudible:
-      [ { domain: "soundcloud.com"
-        , enabled: false
-        , withSubdomains: false
-        }
-      , { domain: "bandcamp.com"
-        , enabled: false
-        , withSubdomains: true
-        }
-      , { domain: "youtube.com"
-        , enabled: false
-        , withSubdomains: false
-        }
-      ]
-    }
+initialSettings :: Settings
+initialSettings =
+  { includeMuted: true
+  , allWindows: true
+  , includeFirst: true
+  , sortBackwards: false
+  , menuOnTab: false
+  , markAsAudible: []
+  }
 
 
-mkComponent :: State -> H.Component HTML Query Unit Message Aff
-mkComponent state = H.component
-    { initialState: const state
+mkComponent :: Settings -> H.Component HTML Query Action Message Aff
+mkComponent s = H.component
+    { initialState: const { pageState: Normal
+                          , validationResult: []
+                          , settings: s
+                          }
     , render
     , eval
     , receiver: const Nothing
     }
   where
+
   render :: State -> H.ComponentHTML Query
-  render { includeMuted, allWindows, includeFirst, sortBackwards
-         , menuOnTab, menuOnButton, markAsAudible } =
-    div_
+  render ({ pageState
+          , validationResult
+          , settings: { includeMuted
+                      , allWindows
+                      , includeFirst
+                      , sortBackwards
+                      , menuOnTab
+                      , markAsAudible } }) =
+    div_ $
     [ h3_ [ text "GENERAL SETTINGS" ]
 
     , div_
@@ -142,11 +148,11 @@ mkComponent state = H.component
               ]
       , label
         [ for "includeFirst" ]
-        [ text "When cycling through tabs, also include first tab from which the cycle was started" ]
+        [ text "When cycling through tabs, also include the first tab from which the cycle was started" ]
       ]
 
     , h3_ [ text "CONTEXT MENUS" ]
-    , text "Context menus allow to manually mark tabs as audible."
+    , text "Context menus allow to manually mark tabs as audible. You can always do this by context-clicking the extension icon."
     , br_
     , br_
 
@@ -158,22 +164,12 @@ mkComponent state = H.component
               ]
       , label
         [ for "menuOnTab" ]
-        [ text "Enable for tabs" ]
-      ]
-
-    , div_
-      [ input [ type_ InputCheckbox
-              , checked menuOnButton
-              , onChecked (HE.input (Toggle MenuOnButton))
-              , id_ "menuOnButton"
-              ]
-      , label
-        [ for "menuOnButton" ]
-        [ text "Enable for toolbar button" ]
+        [ text "Also enable 'Mark as audible' context menu option for tabs" ]
       ]
 
     , h3_ [ text "MARK DOMAINS" ]
-    , text "Enter below domains which you want to mark as audible permanently. This may be useful when browsing these sites a lot."
+    , text $
+      "Enter below domains which you want to mark as audible permanently."
     , br_
     , br_
 
@@ -181,78 +177,158 @@ mkComponent state = H.component
       markAsAudible `flip mapWithIndex`
       \ix { domain, enabled, withSubdomains } ->
       let id = "withSubdomains" <> show ix in
-      div_
-      [ input [ type_ InputCheckbox
-              , onChecked $ HE.input $ Toggle $ FilterEnabled ix
-              , checked enabled ]
-      , input [ value domain
-              , HE.onValueInput $ HE.input (TextInput <<< DomainField ix)
-              ]
+      div_ $
+      [
+        input
+        [ type_ InputCheckbox
+        , onChecked $ HE.input $ Toggle $ FilterEnabled ix
+        , id_ $ "domain-checkbox-"  <> show ix
+        , title $ if enabled
+                  then "Enabled"
+                  else "Disabled"
+        , checked enabled ]
+
+      , input $
+        [ value domain
+        , HE.onValueInput $ HE.input (TextInput <<< DomainField ix)
+        ] <>
+
+        -- Highlight if invalid
+        case validationResult A.!! ix of
+          Just false -> [ class_ (wrap "invalid-domain")
+                        , title "Invalid domain!" ]
+          _ -> []
       , input [ type_ InputCheckbox
               , onChecked $ HE.input $ Toggle $ FilterWithSubdomains ix
               , id_ id
               , checked withSubdomains
               ]
       , label
-        [ for id ]
+        [ for id
+        , title "Whether to include all subdomains of this domain"  ]
         [ text "Include subdomains" ]
       , input [ type_ InputButton
+              , class_ (wrap "button")
               , onClick  (HE.input $ const (Click (RemoveDomain ix)))
               , value "Remove"
+              , title "Remove this domain from the list"
               ]
       ]
+
     , input [ type_ InputButton
-            , onClick (HE.input $ const (Click RestoreDefaults))
-            , value "Restore defaults"
+            , class_ (wrap "button")
+            , onClick (HE.input $ const (Click AddDomain))
+            , value "Add domain"
             ]
-    ]
+
+    , br_
+    , br_
+    ] <>
+    case pageState of
+      Normal ->
+        [ input [ type_ InputButton
+                , onClick (HE.input $ const (Click RestoreDefaults))
+                , id_ "button-restore"
+                , class_ (wrap "button")
+                , value "Restore defaults"
+                ]
+        ]
+      _ -> [ text "Do you really want to reset the settings?"
+           , input [ type_ InputButton
+                   , onClick $ HE.input $ const $ Click ConfirmRestore
+                   , class_ (wrap "button")
+                   , value "OK"
+                   ]
+           , input [ type_ InputButton
+                   , onClick $ HE.input $ const $ Click CancelRestore
+                   , class_ (wrap "button")
+                   , value "Cancel"
+                   , ref cancelRestoreRef
+                   ]
+           ]
+
 
   eval :: Query ~> H.ComponentDSL State Query Message Aff
   eval (Click button next) = do
-    case button of
-      RemoveDomain index ->
-        H.modify_ $
-        prop markAsAudible_ %~
-        (\arr -> fromMaybe arr $ A.deleteAt index arr)
-      RestoreDefaults -> do
-        confirmed <- H.liftEffect $
-          window >>= confirm "Do you really want to reset the settings?"
-        when confirmed do
-          H.put initialState
 
+    case button of
+      RemoveDomain index -> do
+        modifySettings $
+          _markAsAudible %~
+          (\arr -> fromMaybe arr $ A.deleteAt index arr)
+      AddDomain -> do
+        modifySettings $
+          _markAsAudible %~
+          (_ <> pure { domain: ""
+                     , enabled: true
+                     , withSubdomains: false
+                     })
+      RestoreDefaults -> do
+        setPageState RestoreConfirmation
+        H.getRef cancelRestoreRef >>= \maybeElem -> do
+          for_ maybeElem $ H.liftEffect <<< FFI.setFocus
+      ConfirmRestore -> do
+        modifySettings $ const initialSettings
+        setPageState Normal
+      CancelRestore -> do
+        setPageState Normal
+    saveSettings
     pure next
 
   eval (TextInput input next) = do
     case input of
-      DomainField index str ->
-        H.modify_ $
-        prop markAsAudible_ %~
-        ix index %~
-        set (prop domain_) str
-
+      DomainField index str -> do
+        modifySettings $
+          _markAsAudible %~
+          ix index %~
+          set _domain str
+    saveSettings
     pure next
+
   eval (Toggle checkbox value next) = do
-    H.modify_ case checkbox of
-      IncludeMuted  -> (_ { includeMuted  = value })
-      AllWindows    -> (_ { allWindows    = value })
-      IncludeFirst  -> (_ { includeFirst  = value })
-      SortBackwards -> (_ { sortBackwards = value })
-      MenuOnTab     -> (_ { menuOnTab     = value })
-      MenuOnButton  -> (_ { menuOnButton  = value })
-      FilterEnabled index ->
-        prop markAsAudible_ %~
-        ix index %~
-        set (prop enabled_) value
-      FilterWithSubdomains index ->
-        prop markAsAudible_ %~
-        ix index %~
-        set (prop withSubdomains_) value
+    modifySettings $
+      case checkbox of
+        IncludeMuted  -> (_ { includeMuted  = value })
+        AllWindows    -> (_ { allWindows    = value })
+        IncludeFirst  -> (_ { includeFirst  = value })
+        SortBackwards -> (_ { sortBackwards = value })
+        MenuOnTab     -> (_ { menuOnTab     = value })
+        FilterEnabled index ->
+          _markAsAudible %~
+          ix index %~
+          set _enabled value
+        FilterWithSubdomains index ->
+          _markAsAudible %~
+          ix index %~
+          set _withSubdomains value
 
-    values <- H.get
-    H.liftAff (save values)
+    saveSettings
     pure next
 
-  withSubdomains_ = SProxy :: SProxy "withSubdomains"
-  domain_ = SProxy :: SProxy "domain"
-  enabled_ = SProxy :: SProxy "enabled"
-  markAsAudible_ = SProxy :: SProxy "markAsAudible"
+  saveSettings = do
+    settings <- H.gets $ view _settings
+    let validationResult = validate settings
+    H.modify_ $ over _validationResult $
+      const validationResult
+    when (A.foldr conj true validationResult) do
+      H.liftAff do
+        FFI.save settings
+
+  validate :: Settings -> ValidationResult
+  validate settings = settings #
+    view _markAsAudible <#>
+    view _domain <#>
+    FFI.isValidDomain
+
+  modifySettings = H.modify_ <<< over _settings
+  setPageState = H.modify_ <<< set _pageState
+
+  cancelRestoreRef = wrap "cancel-restore"
+
+  _settings = prop (SProxy :: SProxy "settings")
+  _pageState = prop (SProxy :: SProxy "pageState")
+  _withSubdomains = prop (SProxy :: SProxy "withSubdomains")
+  _domain = prop (SProxy :: SProxy "domain")
+  _enabled = prop (SProxy :: SProxy "enabled")
+  _markAsAudible = prop (SProxy :: SProxy "markAsAudible")
+  _validationResult = prop (SProxy :: SProxy "validationResult")

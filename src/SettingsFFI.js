@@ -13,3 +13,40 @@ exports.load_ = function (defaults) {
         });
     };
 };
+
+exports.setFocus = function(elem) {
+    return function() {
+        elem.focus();
+    };
+};
+
+// Adapted from https://github.com/miguelmota/is-valid-domain
+exports.isValidDomain = function (v, opts) {
+    if (typeof v !== 'string')
+        return false;
+    if (!(opts instanceof Object))
+        opts = {};
+
+    var parts = v.split('.');
+    if (parts.length <= 1)
+        return false;
+
+    var tld = parts.pop();
+    var tldRegex = /^(?:xn--)?[a-zA-Z0-9]+$/gi;
+
+    if (!tldRegex.test(tld))
+        return false;
+    if (opts.subdomain == false && parts.length > 1)
+        return false;
+
+    var isValid = parts.every(function(host, index) {
+        if (opts.wildcard && index === 0 && host === '*' && parts.length > 1)
+            return true;
+
+        var hostRegex = /^(?!:\/\/)([a-zA-Z0-9]+|[a-zA-Z0-9][a-zA-Z0-9-]*[a-zA-Z0-9])$/gi;
+
+        return hostRegex.test(host);
+    });
+
+    return isValid;
+};
