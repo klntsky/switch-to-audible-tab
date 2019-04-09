@@ -90,6 +90,17 @@ const sortTabs = tabs => {
     return tabs;
 };
 
+const filterRepeating = tabs => {
+    const ids = new Set();
+
+    return tabs.filter(tab => {
+        if (ids.has(tab.id)) {
+            return false;
+        }
+        ids.add(tab.id);
+        return true;
+    });
+};
 
 /** Given an array of tabs and the active tab, returns next tab's ID.
     @param tabs {Tab[]}
@@ -230,7 +241,7 @@ browser.browserAction.onClicked.addListener(async () => {
     if (permanentlyMarked.length)
         tabs = tabs.concat(await query(refine({ url: permanentlyMarked })));
 
-    tabs = sortTabs(tabs);
+    tabs = filterRepeating(sortTabs(tabs));
 
     if (firstActive)
         tabs = tabs.filter(tab => tab.id !== firstActive.id);
