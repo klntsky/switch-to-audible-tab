@@ -1,11 +1,14 @@
 module Settings where
 
+import Prelude
+
 import Data.Array (mapWithIndex)
 import Data.Array as A
 import Data.Lens (over, set, view, (%~))
 import Data.Lens.Index (ix)
 import Data.Lens.Record (prop)
 import Data.Maybe (Maybe(..), fromMaybe)
+import Data.Monoid (guard)
 import Data.Newtype (wrap)
 import Data.Symbol (SProxy(..))
 import Data.Traversable (for_)
@@ -15,7 +18,6 @@ import Halogen.HTML (HTML, br_, div_, h3_, input, label, text)
 import Halogen.HTML.Events (onChecked, onClick)
 import Halogen.HTML.Events as HE
 import Halogen.HTML.Properties (InputType(..), checked, class_, for, id_, ref, type_, value, title)
-import Prelude
 import SettingsFFI as FFI
 
 
@@ -49,8 +51,8 @@ data CheckBox
   | IncludeFirst
   | SortBackwards
   | MenuOnTab
-  | FilterEnabled Int
-  | FilterWithSubdomains Int
+  | DomainEnabled Int
+  | DomainWithSubdomains Int
 
 data Button
   = RemoveDomain Int
@@ -61,7 +63,6 @@ data Button
 
 data Input
   = DomainField Int String
-
 
 data Query a
   = Toggle CheckBox Boolean a
@@ -81,7 +82,6 @@ initialSettings =
   , menuOnTab: false
   , markAsAudible: []
   }
-
 
 mkComponent :: Settings -> H.Component HTML Query Action Message Aff
 mkComponent s = H.component
@@ -152,7 +152,7 @@ mkComponent s = H.component
       ]
 
     , h3_ [ text "CONTEXT MENUS" ]
-    , text "Context menus allow to manually mark tabs as audible. You can always do this by context-clicking the extension icon."
+    , text "Context menus allow to manually mark tabs as audible. You can always do this by context-clicking the extension icon. A tiny indicator will be added to the extension button, showing that currently active tab was manually marked."
     , br_
     , br_
 
@@ -181,7 +181,7 @@ mkComponent s = H.component
       [
         input
         [ type_ InputCheckbox
-        , onChecked $ HE.input $ Toggle $ FilterEnabled ix
+        , onChecked $ HE.input $ Toggle $ DomainEnabled ix
         , id_ $ "domain-checkbox-"  <> show ix
         , title $ if enabled
                   then "Enabled"
@@ -194,12 +194,12 @@ mkComponent s = H.component
         ] <>
 
         -- Highlight if invalid
-        case validationResult A.!! ix of
-          Just false -> [ class_ (wrap "invalid-domain")
-                        , title "Invalid domain!" ]
-          _ -> []
+        guard (Just false == validationResult A.!! ix)
+        [ class_ (wrap "invalid-domain")
+        , title "Invalid domain!" ]
+
       , input [ type_ InputCheckbox
-              , onChecked $ HE.input $ Toggle $ FilterWithSubdomains ix
+              , onChecked $ HE.input $ Toggle $ DomainWithSubdomains ix
               , id_ id
               , checked withSubdomains
               ]
@@ -224,6 +224,7 @@ mkComponent s = H.component
     , br_
     , br_
     ] <>
+
     case pageState of
       Normal ->
         [ input [ type_ InputButton
@@ -233,20 +234,21 @@ mkComponent s = H.component
                 , value "Restore defaults"
                 ]
         ]
-      _ -> [ text "Do you really want to reset the settings?"
-           , input [ type_ InputButton
-                   , onClick $ HE.input $ const $ Click ConfirmRestore
-                   , class_ (wrap "button")
-                   , value "OK"
-                   ]
-           , input [ type_ InputButton
-                   , onClick $ HE.input $ const $ Click CancelRestore
-                   , class_ (wrap "button")
-                   , value "Cancel"
-                   , ref cancelRestoreRef
-                   ]
-           ]
 
+      RestoreConfirmation ->
+        [ text "Do you really want to reset the settings?"
+        , input [ type_ InputButton
+                , onClick $ HE.input $ const $ Click ConfirmRestore
+                , class_ (wrap "button")
+                , value "OK"
+                ]
+        , input [ type_ InputButton
+                , onClick $ HE.input $ const $ Click CancelRestore
+                , class_ (wrap "button")
+                , value "Cancel"
+                , ref cancelRestoreRef
+                ]
+        ]
 
   eval :: Query ~> H.ComponentDSL State Query Message Aff
   eval (Click button next) = do
@@ -256,6 +258,7 @@ mkComponent s = H.component
         modifySettings $
           _markAsAudible %~
           (\arr -> fromMaybe arr $ A.deleteAt index arr)
+
       AddDomain -> do
         modifySettings $
           _markAsAudible %~
@@ -263,15 +266,19 @@ mkComponent s = H.component
                      , enabled: true
                      , withSubdomains: false
                      })
+
       RestoreDefaults -> do
         setPageState RestoreConfirmation
         H.getRef cancelRestoreRef >>= \maybeElem -> do
           for_ maybeElem $ H.liftEffect <<< FFI.setFocus
+
       ConfirmRestore -> do
         modifySettings $ const initialSettings
         setPageState Normal
+
       CancelRestore -> do
         setPageState Normal
+
     saveSettings
     pure next
 
@@ -293,11 +300,13 @@ mkComponent s = H.component
         IncludeFirst  -> (_ { includeFirst  = value })
         SortBackwards -> (_ { sortBackwards = value })
         MenuOnTab     -> (_ { menuOnTab     = value })
-        FilterEnabled index ->
+
+        DomainEnabled index ->
           _markAsAudible %~
           ix index %~
           set _enabled value
-        FilterWithSubdomains index ->
+
+        DomainWithSubdomains index ->
           _markAsAudible %~
           ix index %~
           set _withSubdomains value

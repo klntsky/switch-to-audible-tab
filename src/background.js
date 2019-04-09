@@ -66,7 +66,6 @@ browser.storage.onChanged.addListener((changes, area) => {
     if (typeof changes.settings === 'object') {
         settings = changes.settings.newValue;
         updateMenuContexts(settings);
-        console.log('updated', settings);
     }
 });
 

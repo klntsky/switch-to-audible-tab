@@ -4,7 +4,8 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "build": "spago build && spago bundle --to static/settings.js && npm run uglify",
-    "uglify": "uglifyjs static/settings.js --compress --mangle --output static/settings.js"
+    "uglify": "uglifyjs static/settings.js --compress --mangle --output static/settings.js",
+    "pack": "zip -r ./switch-to-audible-tab.xpi img static src/background.js manifest.json"
   },
   "repository": {
     "type": "git",

@@ -15,3 +15,19 @@ If there are audible tabs belonging to other windows, these windows will be swit
 It is also possible to control the order in which tabs will be visited: available options are left-to-right and right-to-left. This will only make difference if there are more than two tabs in a cycle.
 
 **Alt+Shift+A** can be used instead of the toolbar button.
+
+# Building from source
+
+You'll need to install spago & purescript. Via npm:
+
+```
+npm install spago purescript
+```
+
+Or use alternative methods.
+
+```
+npm install
+npm run build
+npm run pack
+```
