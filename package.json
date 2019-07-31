@@ -2,9 +2,9 @@
   "name": "switch-to-audible-tab",
   "private": true,
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "build": "spago build && spago bundle --to static/settings.js && npm run uglify",
-    "uglify": "uglifyjs static/settings.js --compress --mangle --output static/settings.js",
+    "test": "ava --verbose",
+    "build": "spago bundle-app --to static/settings.js && npm run uglify",
+    "uglify": "parcel build --no-source-maps --target browser --out-file static/settings.js static/settings.js",
     "pack": "zip -r ./switch-to-audible-tab.xpi img static src/background.js manifest.json"
   },
   "repository": {
@@ -12,8 +12,8 @@
     "url": "git+https://gitlab.com/klntsky/switch-to-audible-tab.git"
   },
   "devDependencies": {
-    "bower": "^1.8.8",
-    "pulp": "^12.3.1",
-    "uglify-js": "^3.5.2"
+    "ava": "^1.4.1",
+    "parcel": "^1.12.3",
+    "webextensions-geckodriver": "^0.6.1"
   }
 }

@@ -1,4 +1,5 @@
 /bower_components/
+/.web-ext-artifacts/
 /node_modules/
 /.pulp-cache/
 /output/
@@ -9,5 +10,7 @@
 /.psa*
 *.xpi
 /.spago/
+/.cache/
 package-lock.json
 static/settings.js
+/dist/

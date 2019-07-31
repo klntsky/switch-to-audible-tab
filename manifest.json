@@ -29,5 +29,11 @@
     },
     "permissions": [
         "tabs", "storage", "menus", "activeTab"
-    ]
+    ],
+    "applications": {
+        "gecko": {
+            "id": "@switch-to-audible-tab",
+            "strict_min_version": "57.0"
+        }
+    }
 }

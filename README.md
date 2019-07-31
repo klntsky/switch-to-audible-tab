@@ -2,6 +2,8 @@
 
 [Install from AMO](https://addons.mozilla.org/en-US/firefox/addon/switch-to-audible-tab/) / [Gitlab](https://gitlab.com/klntsky/switch-to-audible-tab) / [Github](https://github.com/8084/switch-to-audible-tab)
 
+# Settings Preview:
+
 ![preview](screenshot.png)
 
 This WebExtension allows the user to switch to the tab that is currently making sound.
@@ -25,6 +27,8 @@ npm install spago purescript
 ```
 
 Or use alternative methods.
+
+To build the extension and get the `.xpi` file, run:
 
 ```
 npm install
