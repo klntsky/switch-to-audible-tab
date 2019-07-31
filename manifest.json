@@ -1,7 +1,7 @@
 {
     "manifest_version": 2,
     "name": "Switch to audible tab",
-    "version": "0.0.6",
+    "version": "0.0.7",
     "description": "Focus on tab that is currently making sound (Alt+Shift+A).",
     "icons": {
         "128": "img/128.png"
@@ -32,7 +32,7 @@
     ],
     "applications": {
         "gecko": {
-            "id": "@switch-to-audible-tab",
+            "id": "{0cd726db-f954-44f2-bf4f-7ed0de734de2}",
             "strict_min_version": "57.0"
         }
     }
