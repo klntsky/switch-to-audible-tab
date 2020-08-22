@@ -10,12 +10,10 @@ const defaults = {
     markAsAudible: []
 };
 
-
 // A flag indicating that no tabs are selected by queries.
 const NoTabs = Symbol('NoTabs');
 // A flag indicating that the tab switching cycle was ended.
 const FromStart = Symbol('FromStart');
-
 
 let settings = null;
 // First active tab, i.e. the tab that was active when the user started
@@ -29,18 +27,15 @@ const query = browser.tabs.query;
 let marked = [];
 const MENU_ID = "mark-as-audible";
 
-
 const addMarkedTab = tab => {
   if (!marked.some(mkd => mkd.id === tab.id)) {
     marked.push(tab);
   }
 };
 
-
 const removeMarkedTab = tab => {
   marked = marked.filter(mkd => mkd.id !== tab.id);
 };
-
 
 const updateIcon = isChecked => {
     browser.browserAction.setIcon({
@@ -48,19 +43,20 @@ const updateIcon = isChecked => {
     });
 };
 
-
 /** Returns active tab in the current window. */
 const getActiveTab = async () => {
     return browser.tabs.query({ active: true, currentWindow: true })
         .then(x => x[0]);
 };
 
-
 /** Returns settings object */
 const loadSettings = () => browser.storage.local.get({
     settings: defaults
-}).then(r => r.settings);
-
+}).then(r => {
+    // Set global variable
+    settings = r.settings;
+    return r.settings;
+});
 
 browser.storage.onChanged.addListener((changes, area) => {
     if (typeof changes.settings === 'object') {
@@ -140,15 +136,8 @@ const updateMenuContexts = async settings => {
     });
 };
 
-
-loadSettings().then(async s => {
-    settings = s;
-    await updateMenuContexts(settings);
-});
-
-
+loadSettings().then(updateMenuContexts);
 getActiveTab().then(tab => firstActive = tab);
-
 
 // When some tab gets removed, check if we are referencing it.
 browser.tabs.onRemoved.addListener(tabId => {
@@ -157,7 +146,6 @@ browser.tabs.onRemoved.addListener(tabId => {
     }
     marked = marked.filter(mkd => mkd.id !== tabId);
 });
-
 
 // Track the last active tab which was activated by the user or another
 // extension
@@ -178,7 +166,6 @@ browser.tabs.onActivated.addListener(async ({ tabId, windowId }) => {
     }
 });
 
-
 browser.windows.onFocusChanged.addListener(async (windowId) => {
     const activeTab = await getActiveTab();
     const checked = marked.some(mkd => mkd.id === activeTab.id);
@@ -187,7 +174,6 @@ browser.windows.onFocusChanged.addListener(async (windowId) => {
         firstActive = activeTab;
     }
 });
-
 
 browser.browserAction.onClicked.addListener(async () => {
     const switchTo = async (tab, activeTab) => {
@@ -273,7 +259,6 @@ browser.browserAction.onClicked.addListener(async () => {
     }
 });
 
-
 browser.menus.onShown.addListener(async function(info, tab) {
     if (info.menuIds.includes(MENU_ID)) {
         let checked = false;
@@ -290,7 +275,6 @@ browser.menus.onShown.addListener(async function(info, tab) {
         await browser.menus.refresh();
     }
 });
-
 
 browser.menus.onClicked.addListener(async function(info, tab) {
     const activeTab = await getActiveTab();
