@@ -7,7 +7,8 @@ const defaults = {
     includeFirst: true,
     sortBackwards: false,
     menuOnTab: false,
-    markAsAudible: []
+    markAsAudible: [],
+    websitesOnlyIfNoAudible: false
 };
 
 // A flag indicating that no tabs are selected by queries.
@@ -49,12 +50,21 @@ const getActiveTab = async () => {
         .then(x => x[0]);
 };
 
+const runSettingsMigrations = settings => {
+    if (typeof settings.websitesOnlyIfNoAudible == 'undefined') {
+        settings.websitesOnlyIfNoAudible = defaults.websitesOnlyIfNoAudible;
+    }
+    return settings;
+};
+
 /** Returns settings object */
 const loadSettings = () => browser.storage.local.get({
     settings: defaults
 }).then(r => {
+
     // Set global variable
-    settings = r.settings;
+    settings = runSettingsMigrations(r.settings) ;
+
     return r.settings;
 });
 
@@ -209,23 +219,29 @@ browser.browserAction.onClicked.addListener(async () => {
 
     tabs = tabs.concat(await query(refine({ audible: true })));
 
+    const areReallyAudible = tabs.length != 0;
+
     if (settings.includeMuted)
         tabs = tabs.concat(await query(refine({ muted: true })));
 
     if (marked.length)
         tabs = tabs.concat(marked);
 
-    const permanentlyMarked = settings.markAsAudible.reduce(
-        (acc, { domain, enabled, withSubdomains }) => {
-            if (enabled) {
-                acc.push(withSubdomains ? `*://*.${domain}/*` : `*://${domain}/*`);
-            }
-            return acc;
-        }, []
-    );
+    // Include websites only if websitesOnlyIfAudible is false or
+    // there are no "really" audible tabs.
+    if (!areReallyAudible || !settings.websitesOnlyIfNoAudible) {
+        const permanentlyMarked = settings.markAsAudible.reduce(
+            (acc, { domain, enabled, withSubdomains }) => {
+                if (enabled) {
+                    acc.push(withSubdomains ? `*://*.${domain}/*` : `*://${domain}/*`);
+                }
+                return acc;
+            }, []
+        );
 
-    if (permanentlyMarked.length)
-        tabs = tabs.concat(await query(refine({ url: permanentlyMarked })));
+        if (permanentlyMarked.length)
+            tabs = tabs.concat(await query(refine({ url: permanentlyMarked })));
+    }
 
     tabs = filterRepeating(sortTabs(tabs));
 

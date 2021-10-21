@@ -14,7 +14,7 @@ import Data.Symbol (SProxy(..))
 import Data.Traversable (for_)
 import Effect.Aff (Aff)
 import Halogen as H
-import Halogen.HTML (HTML, br_, div_, h3_, input, label, text)
+import Halogen.HTML (br_, div_, h3_, input, label, text, span)
 import Halogen.HTML.Events (onChecked, onClick)
 import Halogen.HTML.Events as HE
 import Halogen.HTML.Properties (InputType(..), checked, class_, for, id_, ref, type_, value, title)
@@ -43,6 +43,7 @@ type Settings =
                            , enabled :: Boolean
                            , withSubdomains :: Boolean
                            }
+  , websitesOnlyIfNoAudible :: Boolean
   }
 
 data CheckBox
@@ -53,6 +54,7 @@ data CheckBox
   | MenuOnTab
   | DomainEnabled Int
   | DomainWithSubdomains Int
+  | WebsitesOnlyIfNoAudible
 
 data Button
   = RemoveDomain Int
@@ -77,9 +79,10 @@ initialSettings =
   , sortBackwards: false
   , menuOnTab: false
   , markAsAudible: []
+  , websitesOnlyIfNoAudible: false
   }
 
-mkComponent :: forall i q o. Settings -> H.Component HTML q i o Aff
+mkComponent :: forall i q o. Settings -> H.Component q i o Aff
 mkComponent s = H.mkComponent
     { initialState: const { pageState: Normal
                           , validationResult: []
@@ -97,14 +100,15 @@ render ({ pageState
                     , includeFirst
                     , sortBackwards
                     , menuOnTab
-                    , markAsAudible } }) =
+                    , markAsAudible
+                    , websitesOnlyIfNoAudible } }) =
   div_ $
   [ h3_ [ text "GENERAL SETTINGS" ]
 
   , div_
     [ input [ type_ InputCheckbox
                , checked includeMuted
-               , onChecked $ Just <<< Toggle IncludeMuted
+               , onChecked $ Toggle IncludeMuted
                , id_ "includeMuted"
                ]
     , label
@@ -115,7 +119,7 @@ render ({ pageState
   , div_
     [ input [ type_ InputCheckbox
                , checked allWindows
-               , onChecked $ Just <<< Toggle AllWindows
+               , onChecked $ Toggle AllWindows
                , id_ "allWindows"
                ]
     , label
@@ -126,47 +130,68 @@ render ({ pageState
   , div_
     [ input [ type_ InputCheckbox
             , checked sortBackwards
-            , onChecked $ Just <<< Toggle SortBackwards
+            , onChecked $ Toggle SortBackwards
             , id_ "sortBackwards"
             ]
     , label
       [ for "sortBackwards" ]
-      [ text "When cycling through tabs, visit them in reverse order (i.e. right-to-left)" ]
+      [ text "Loop in reverse order" ]
+    , span
+      [ class_ (wrap "tooltip") ]
+      [ text "?"
+      , span
+        [ class_ (wrap "tooltiptext") ]
+        [ text "When cycling through tabs, visit them in reverse order (i.e. right-to-left). May be useful, because new tabs usually appear last" ]
+      ]
     ]
 
   , div_
     [ input [ type_ InputCheckbox
             , checked includeFirst
-            , onChecked $ Just <<< Toggle IncludeFirst
+            , onChecked $ Toggle IncludeFirst
             , id_ "includeFirst"
             ]
     , label
       [ for "includeFirst" ]
-      [ text "When cycling through tabs, also include the first tab from which the cycle was started" ]
+      [ text "Include initial tab" ]
+    , span
+      [ class_ (wrap "tooltip") ]
+      [ text "?"
+      , span
+        [ class_ (wrap "tooltiptext") ]
+        [ text "When cycling through tabs, also include the first tab from which the cycle was started" ]
+      ]
     ]
-
-  , h3_ [ text "CONTEXT MENUS" ]
-  , text "Context menus allow to manually mark tabs as audible. You can always do this by context-clicking the extension icon. A tiny indicator will be added to the extension button, showing that currently active tab was manually marked."
-  , br_
-  , br_
-
+  , h3_ [ text "CONTEXT MENU" ]
   , div_
     [ input [ type_ InputCheckbox
             , checked menuOnTab
-            , onChecked $ Just <<< Toggle MenuOnTab
+            , onChecked $ Toggle MenuOnTab
             , id_ "menuOnTab"
             ]
     , label
       [ for "menuOnTab" ]
-      [ text "Also enable 'Mark as audible' context menu option for tabs" ]
+      [ text "Enable 'Mark as audible' context menu option for tabs" ]
+    , span
+      [ class_ (wrap "tooltip") ]
+      [ text "?"
+      , span
+        [ class_ (wrap "tooltiptext") ]
+        [ text "Adds ability to manually mark tabs as audible. You can always do this by right-clicking the extension icon. A tiny indicator will be added to the extension button, showing that currently active tab was manually marked." ]
+      ]
     ]
 
   , h3_ [ text "MARK DOMAINS" ]
   , text $
-    "Enter below domains which you want to mark as audible permanently."
+    "Domains that will be marked as audible permanently."
+  , span
+    [ class_ (wrap "tooltip") ]
+    [ text "?"
+    , span
+      [ class_ (wrap "tooltiptext") ]
+      [ text "List the streaming services you use to navigate to them quickly" ]
+    ]
   , br_
-  , br_
-
   , div_ $
     markAsAudible `flip mapWithIndex`
     \ix { domain, enabled, withSubdomains } ->
@@ -175,7 +200,7 @@ render ({ pageState
     [
       input
       [ type_ InputCheckbox
-      , onChecked $ Just <<< Toggle (DomainEnabled ix)
+      , onChecked $ Toggle (DomainEnabled ix)
       , id_ $ "domain-checkbox-"  <> show ix
       , title $ if enabled
                 then "Enabled"
@@ -184,7 +209,7 @@ render ({ pageState
 
     , input $
       [ value domain
-      , HE.onValueInput $ Just <<< TextInput <<< DomainField ix
+      , HE.onValueInput $ TextInput <<< DomainField ix
       ] <>
 
       -- Highlight if invalid
@@ -193,7 +218,7 @@ render ({ pageState
       , title "Invalid domain!" ]
 
     , input [ type_ InputCheckbox
-            , onChecked $ Just <<< Toggle (DomainWithSubdomains ix)
+            , onChecked $ Toggle (DomainWithSubdomains ix)
             , id_ id
             , checked withSubdomains
             ]
@@ -203,7 +228,7 @@ render ({ pageState
       [ text "Include subdomains" ]
     , input [ type_ InputButton
             , class_ $ wrap "button"
-            , onClick $ const $ Just $ Click $ RemoveDomain ix
+            , onClick $ const $ Click $ RemoveDomain ix
             , value "Remove"
             , title "Remove this domain from the list"
             ]
@@ -211,10 +236,30 @@ render ({ pageState
 
   , input [ type_ InputButton
           , class_ $ wrap "button"
-          , onClick $ const $ Just $ Click AddDomain
+          , onClick $ const $ Click AddDomain
           , value "Add domain"
           ]
 
+  , br_
+  , div_
+    [ input [ type_ InputCheckbox
+            , checked websitesOnlyIfNoAudible
+            , onChecked $ Toggle WebsitesOnlyIfNoAudible
+            , id_ "websitesNoAudible"
+            ]
+    , label
+      [ for "websitesNoAudible" ]
+      [ text
+        "Only include domains if there are no \"actually\" audible tabs."
+      , span
+        [ class_ (wrap "tooltip") ]
+        [ text "?"
+        , span
+          [ class_ (wrap "tooltiptext") ]
+          [ text "Motivation is that when the sound has stopped, the user may want to jump to the tab where they can click \"play\" again (e.g. a bandcamp tab). But while the sound is playing, there is no reason to cycle through all open tabs from marked websites, because only one of them has sound." ]
+        ]
+      ]
+    ]
   , br_
   , br_
   ] <>
@@ -222,7 +267,7 @@ render ({ pageState
   case pageState of
     Normal ->
       [ input [ type_ InputButton
-              , onClick $ const $ Just $ Click RestoreDefaults
+              , onClick $ const $ Click RestoreDefaults
               , id_ "button-restore"
               , class_ (wrap "button")
               , value "Restore defaults"
@@ -232,12 +277,12 @@ render ({ pageState
     RestoreConfirmation ->
       [ text "Do you really want to reset the settings?"
       , input [ type_ InputButton
-              , onClick $ const $ Just $ Click ConfirmRestore
+              , onClick $ const $ Click ConfirmRestore
               , class_ $ wrap "button"
               , value "OK"
               ]
       , input [ type_ InputButton
-              , onClick $ const $ Just $ Click CancelRestore
+              , onClick $ const $ Click CancelRestore
               , class_ $ wrap "button"
               , value "Cancel"
               , ref cancelRestoreRef
@@ -292,6 +337,7 @@ handleAction (Toggle checkbox value) = do
       IncludeFirst  -> (_ { includeFirst  = value })
       SortBackwards -> (_ { sortBackwards = value })
       MenuOnTab     -> (_ { menuOnTab     = value })
+      WebsitesOnlyIfNoAudible -> (_ { websitesOnlyIfNoAudible = value })
 
       DomainEnabled index ->
         _markAsAudible %~

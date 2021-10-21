@@ -15,5 +15,6 @@
     "ava": "^1.4.1",
     "parcel": "^1.12.3",
     "webextensions-geckodriver": "^0.6.1"
-  }
+  },
+  "dependencies": {}
 }
