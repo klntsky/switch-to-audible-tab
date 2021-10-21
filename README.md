@@ -2,21 +2,35 @@
 
 [Install from AMO](https://addons.mozilla.org/en-US/firefox/addon/switch-to-audible-tab/) / [Gitlab](https://gitlab.com/klntsky/switch-to-audible-tab) / [Github](https://github.com/8084/switch-to-audible-tab)
 
-# Settings Preview:
-
 ![preview](screenshot.png)
 
 This WebExtension allows the user to switch to the tab that is currently making sound.
 
-If there are multiple audible tabs, the addon will cycle through them and then return to the initial tab (the latter can be opted off at the settings page).
+**Alt+Shift+A** hotkey can be used instead of the toolbar button.
 
-If there are no audible tabs, the addon will do nothing. Tabs that are muted by the user are also considered audible (this can be changed at the settings page).
+# About
+
+## Multiple tabs
+
+If there are multiple audible tabs, the addon will cycle through them and then return to the initial tab (the latter can be opted off at the settings page).
 
 If there are audible tabs belonging to other windows, these windows will be switched too (this can be opted off as well).
 
 It is also possible to control the order in which tabs will be visited: available options are left-to-right and right-to-left. This will only make difference if there are more than two tabs in a cycle.
 
-**Alt+Shift+A** can be used instead of the toolbar button.
+## Muted tabs
+
+If there are no audible tabs, the addon will do nothing. Tabs that are muted by the user are also considered audible (this can be changed at the settings page).
+
+## Marking tabs as audible by domain
+
+There is an option to enter a list of domains which will be marked as audible regardless of actual state. Can be used to avoid spending your time on finding *that bandcamp tab*.
+
+Also, there is an option to include domains in the list only if there are no "actually" audible tabs.
+
+## Default settings
+
+Although tuning advanced options is highly recommended, the defaults will always stay simple to avoid newcomer confusion.
 
 # Building from source
 
