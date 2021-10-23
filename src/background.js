@@ -1,6 +1,7 @@
 /* global browser */
 
 /** Default settings */
+// This should be synchronised with Settings.purs
 const defaults = {
     includeMuted: true,
     allWindows: true,
@@ -8,7 +9,10 @@ const defaults = {
     sortBackwards: false,
     menuOnTab: false,
     markAsAudible: [],
-    websitesOnlyIfNoAudible: false
+    websitesOnlyIfNoAudible: false,
+    followNotifications: true,
+    notificationsTimeout: 10,
+    maxNotificationDuration: 10
 };
 
 // A flag indicating that no tabs are selected by queries.
@@ -27,6 +31,10 @@ const query = browser.tabs.query;
 // Tabs marked as audible by the user
 let marked = [];
 const MENU_ID = "mark-as-audible";
+
+// Used to follow notifications
+const currentlyAudible = new Map(); // tabId => timestamp
+let notifications = []; // [{ tabId : Int, tabIndex: Int }]
 
 const addMarkedTab = tab => {
   if (!marked.some(mkd => mkd.id === tab.id)) {
@@ -51,9 +59,20 @@ const getActiveTab = async () => {
 };
 
 const runSettingsMigrations = settings => {
-    if (typeof settings.websitesOnlyIfNoAudible == 'undefined') {
-        settings.websitesOnlyIfNoAudible = defaults.websitesOnlyIfNoAudible;
+    // TODO: get a list of properties from defaults itself?
+    const added_props = [
+        'websitesOnlyIfNoAudible',
+        'followNotifications',
+        'notificationsTimeout',
+        'maxNotificationDuration'
+    ];
+
+    for (let prop of added_props) {
+        if (typeof settings[prop] == 'undefined') {
+            settings[prop] = defaults[prop];
+        }
     }
+
     return settings;
 };
 
@@ -77,7 +96,7 @@ browser.storage.onChanged.addListener((changes, area) => {
 
 const sortTabs = tabs => {
     if (firstActive)
-        tabs = tabs.concat([firstActive]);
+        tabs = [...tabs, firstActive];
 
     // Sort by windowIds, then by indices.
     tabs = tabs.sort((a, b) => {
@@ -90,7 +109,7 @@ const sortTabs = tabs => {
 
     let ix = tabs.findIndex(x => x === firstActive);
     if (ix != -1) {
-        tabs = tabs.slice(ix + 1).concat(tabs.slice(0, ix));
+        tabs = [...tabs.slice(ix + 1), ...tabs.slice(0, ix)];
     }
 
     return tabs;
@@ -118,9 +137,7 @@ const nextTab = (tabs, activeTab) => {
         return NoTabs;
 
     for (let i = 0; i < tabs.length - 1; i++) {
-        let tab = tabs[i];
-
-        if (tab.id === activeTab.id) {
+        if (tabs[i].id === activeTab.id) {
             return tabs[i+1];
         }
     };
@@ -135,6 +152,7 @@ browser.menus.create({
     contexts: ["browser_action"],
 });
 
+// Add an item to context menu for tabs.
 const updateMenuContexts = async settings => {
     const contexts = ["browser_action"];
     if (settings.menuOnTab) {
@@ -155,6 +173,7 @@ browser.tabs.onRemoved.addListener(tabId => {
         firstActive = null;
     }
     marked = marked.filter(mkd => mkd.id !== tabId);
+    notifications = notifications.filter(tb => tb.id !== tabId);
 });
 
 // Track the last active tab which was activated by the user or another
@@ -186,8 +205,11 @@ browser.windows.onFocusChanged.addListener(async (windowId) => {
 });
 
 browser.browserAction.onClicked.addListener(async () => {
+    // Choose how to switch to the tab, depending on `settings.allWindows`.
+    // Maintain waitingForActivation flag.
     const switchTo = async (tab, activeTab) => {
-        if (!tab  || tab.id === activeTab.id || waitingForActivation)
+
+        if (!tab || tab.id === activeTab.id || waitingForActivation)
             return;
 
         waitingForActivation = true;
@@ -217,15 +239,15 @@ browser.browserAction.onClicked.addListener(async () => {
         return query;
     };
 
-    tabs = tabs.concat(await query(refine({ audible: true })));
+    tabs = [...tabs, ...await query(refine({ audible: true }))];
 
     const areReallyAudible = tabs.length != 0;
 
     if (settings.includeMuted)
-        tabs = tabs.concat(await query(refine({ muted: true })));
+        tabs = [...tabs, ...await query(refine({ muted: true }))];
 
     if (marked.length)
-        tabs = tabs.concat(marked);
+        tabs = [...tabs, ...marked];
 
     // Include websites only if websitesOnlyIfAudible is false or
     // there are no "really" audible tabs.
@@ -240,10 +262,17 @@ browser.browserAction.onClicked.addListener(async () => {
         );
 
         if (permanentlyMarked.length)
-            tabs = tabs.concat(await query(refine({ url: permanentlyMarked })));
+            tabs = [...tabs, ...await query(refine({ url: permanentlyMarked }))];
     }
 
-    tabs = filterRepeating(sortTabs(tabs));
+    tabs = sortTabs(tabs);
+
+    // More recent notifications should always be first.
+    if (settings.followNotifications) {
+        tabs = [...notifications, ...tabs];
+    }
+
+    tabs = filterRepeating(tabs);
 
     if (firstActive)
         tabs = tabs.filter(tab => tab.id !== firstActive.id);
@@ -303,6 +332,32 @@ browser.menus.onClicked.addListener(async function(info, tab) {
 
         if (activeTab.id === tab.id) {
             updateIcon(info.checked);
+        }
+    }
+});
+
+browser.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
+    if (typeof changeInfo.audible == 'boolean') {
+        if (changeInfo.audible) {
+            currentlyAudible.set(tabId, Date.now());
+        } else {
+            if (currentlyAudible.has(tabId)) {
+                const startTime = currentlyAudible.get(tabId);
+                const duration = Date.now() - startTime;
+                currentlyAudible.delete(tabId);
+                // the sound is short enough to be considered a notification
+                if (duration < settings.maxNotificationDuration * 1000) {
+                    // We are not trying to add a tab we are currently on.
+                    if ((await getActiveTab()).id != tab.id) {
+                        // Add it to notifications
+                        notifications.unshift(tab);
+                        // And schedule a deletion
+                        setTimeout(() => {
+                            notifications = notifications.filter(tb => tb.id != tabId);
+                        }, settings.notificationsTimeout * 1000);
+                    }
+                }
+            }
         }
     }
 });

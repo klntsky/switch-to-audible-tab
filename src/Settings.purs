@@ -2,23 +2,30 @@ module Settings where
 
 import Prelude
 
+import Control.Alternative as Alt
 import Data.Array (mapWithIndex)
 import Data.Array as A
-import Data.Lens (over, set, view, (%~))
+import Data.Either (Either(..))
+import Data.Foldable (and)
+import Data.Int as Int
+import Data.Lens (over, set, to, view, (%~), (.~), (^.))
 import Data.Lens.Index (ix)
 import Data.Lens.Record (prop)
-import Data.Maybe (Maybe(..), fromMaybe)
-import Data.Monoid (guard)
+import Data.Maybe (Maybe(..), fromMaybe, isJust)
+import Data.Monoid as M
 import Data.Newtype (wrap)
 import Data.Symbol (SProxy(..))
 import Data.Traversable (for_)
+import Data.Tuple.Nested ((/\))
 import Effect.Aff (Aff)
 import Halogen as H
 import Halogen.HTML (br_, div_, h3_, input, label, text, span)
 import Halogen.HTML.Events (onChecked, onClick)
 import Halogen.HTML.Events as HE
-import Halogen.HTML.Properties (InputType(..), checked, class_, for, id_, ref, type_, value, title)
+import Halogen.HTML.Properties (InputType(..), checked, class_, for, id, ref, type_, value, title)
+
 import SettingsFFI as FFI
+import Data (ValidSettings)
 
 
 type State =
@@ -31,7 +38,18 @@ data PageState = Normal | RestoreConfirmation
 
 derive instance eqPageState :: Eq PageState
 
-type ValidationResult = Array Boolean
+type ValidationResult =
+  { websites :: Array Boolean
+  , isValidTimeout :: Boolean
+  , isValidDuration :: Boolean
+  }
+
+goodValidationResult :: ValidationResult
+goodValidationResult =
+  { websites: []
+  , isValidTimeout: true
+  , isValidDuration: true
+  }
 
 type Settings =
   { includeMuted :: Boolean
@@ -44,6 +62,9 @@ type Settings =
                            , withSubdomains :: Boolean
                            }
   , websitesOnlyIfNoAudible :: Boolean
+  , followNotifications :: Boolean
+  , notificationsTimeout :: String
+  , maxNotificationDuration :: String
   }
 
 data CheckBox
@@ -55,6 +76,7 @@ data CheckBox
   | DomainEnabled Int
   | DomainWithSubdomains Int
   | WebsitesOnlyIfNoAudible
+  | FollowNotifications
 
 data Button
   = RemoveDomain Int
@@ -65,13 +87,16 @@ data Button
 
 data Input
   = DomainField Int String
+  | TimeoutField String
+  | DurationField String
 
 data Action
   = Toggle CheckBox Boolean
   | Click Button
   | TextInput Input
 
-initialSettings :: Settings
+-- This should be synchronised with background.js
+initialSettings :: ValidSettings
 initialSettings =
   { includeMuted: true
   , allWindows: true
@@ -80,150 +105,184 @@ initialSettings =
   , menuOnTab: false
   , markAsAudible: []
   , websitesOnlyIfNoAudible: false
+  , followNotifications: true
+  , notificationsTimeout: 10
+  , maxNotificationDuration: 10
   }
 
-mkComponent :: forall i q o. Settings -> H.Component q i o Aff
+toRuntimeSettings :: ValidSettings -> Settings
+toRuntimeSettings =
+  (_notificationsTimeout %~ show) >>> (_maxNotificationDuration %~ show)
+
+mkComponent :: forall i q o. ValidSettings -> H.Component q i o Aff
 mkComponent s = H.mkComponent
-    { initialState: const { pageState: Normal
-                          , validationResult: []
-                          , settings: s
-                          }
+    { initialState: const
+      { pageState: Normal
+      , validationResult: goodValidationResult
+      , settings: toRuntimeSettings s
+      }
     , render
     , eval: H.mkEval $ H.defaultEval { handleAction = handleAction }
     }
 
 render :: forall m. State -> H.ComponentHTML Action () m
-render ({ pageState
-        , validationResult
-        , settings: { includeMuted
-                    , allWindows
-                    , includeFirst
-                    , sortBackwards
-                    , menuOnTab
-                    , markAsAudible
-                    , websitesOnlyIfNoAudible } }) =
-  div_ $
-  [ h3_ [ text "GENERAL SETTINGS" ]
+render state = div_
+  [ renderGeneralSettings state
+  , renderNotifications state
+  , renderContextMenu state
+  , renderDomains state
+  , br_, br_
+  , renderRestoreDefaults state.pageState
+  ]
 
+renderGeneralSettings :: forall m. State -> H.ComponentHTML Action () m
+renderGeneralSettings
+  { settings: { includeMuted, allWindows, includeFirst, sortBackwards, menuOnTab, markAsAudible } } =
+  div_
+  [ h3_ [ text "GENERAL SETTINGS" ]
   , div_
     [ input [ type_ InputCheckbox
                , checked includeMuted
                , onChecked $ Toggle IncludeMuted
-               , id_ "includeMuted"
+               , id "includeMuted"
                ]
     , label
       [ for "includeMuted" ]
       [ text "Include muted tabs" ]
     ]
-
   , div_
     [ input [ type_ InputCheckbox
                , checked allWindows
                , onChecked $ Toggle AllWindows
-               , id_ "allWindows"
+               , id "allWindows"
                ]
     , label
       [ for "allWindows" ]
       [ text "Search for audible tabs in all windows" ]
     ]
-
   , div_
     [ input [ type_ InputCheckbox
             , checked sortBackwards
             , onChecked $ Toggle SortBackwards
-            , id_ "sortBackwards"
+            , id "sortBackwards"
             ]
     , label
       [ for "sortBackwards" ]
       [ text "Loop in reverse order" ]
-    , span
-      [ class_ (wrap "tooltip") ]
-      [ text "?"
-      , span
-        [ class_ (wrap "tooltiptext") ]
-        [ text "When cycling through tabs, visit them in reverse order (i.e. right-to-left). May be useful, because new tabs usually appear last" ]
-      ]
+    , tooltip "When cycling through tabs, visit them in reverse order (i.e. right-to-left). May be useful, because new tabs usually appear last"
     ]
-
   , div_
     [ input [ type_ InputCheckbox
             , checked includeFirst
             , onChecked $ Toggle IncludeFirst
-            , id_ "includeFirst"
+            , id "includeFirst"
             ]
     , label
       [ for "includeFirst" ]
       [ text "Include initial tab" ]
-    , span
-      [ class_ (wrap "tooltip") ]
-      [ text "?"
-      , span
-        [ class_ (wrap "tooltiptext") ]
-        [ text "When cycling through tabs, also include the first tab from which the cycle was started" ]
-      ]
+    , tooltip "When cycling through tabs, also include the first tab from which the cycle was started"
     ]
-  , h3_ [ text "CONTEXT MENU" ]
+  ]
+
+renderNotifications :: forall m o. State -> H.ComponentHTML Action o m
+renderNotifications { validationResult, settings: { followNotifications, notificationsTimeout, maxNotificationDuration } } = div_
+  [ h3_ [ text "NOTIFICATIONS" ]
+  , input [ type_ InputCheckbox
+          , checked followNotifications
+          , onChecked $ Toggle FollowNotifications
+          , id "notifications"
+          ]
+  , label
+    [ for "notifications" ]
+    [ text "Follow notifications" ]
+  , tooltip $ "Some websites play short notification sounds when user's attention is needed. This option allows to react to a notification during some fixed period of time after the notification sound has ended. A sound is treated as a notification if it is not coming from currently active tab AND its duration is less than " <> maxNotificationDuration <> " seconds. Tabs with notifications will always be shown first, before ordinary audible tabs. However, when the notification sound is still playing, the usual ordering (left-to-right or right-to-left) will apply (because it's impossible to know if a sound is a notification or not, before we know its duration)."
+  , br_
+  , br_
+  , text "Timeout: "
+  , input $
+    [ type_ InputNumber
+    , value notificationsTimeout
+    , HE.onValueInput $ TextInput <<< TimeoutField
+    , id "timeout-field"
+    ] <>
+    -- Highlight if invalid
+    M.guard (not validationResult.isValidTimeout)
+    [ class_ (wrap "invalid")
+    , title "Invalid timeout value (must be a non-negative number)"
+    ]
+  , text " s."
+  , tooltip "Time interval in seconds during which the addon will activate the tab that played notification sound (even though the sound is not playing anymore)"
+  , br_
+  , br_
+  , text "Notification duration limit: "
+  , input $
+    [ type_ InputNumber
+    , value maxNotificationDuration
+    , HE.onValueInput $ TextInput <<< DurationField
+    , id "duration-field"
+    ] <>
+    -- Highlight if invalid
+    M.guard (not validationResult.isValidDuration)
+    [ class_ (wrap "invalid")
+    , title "Invalid duration value (must be a non-negative number)"
+    ]
+  , text " s."
+  , tooltip "Used to decide if a sound is a notification or not. 10 is the recommended value."
+  ]
+
+renderContextMenu :: forall m o. State -> H.ComponentHTML Action o m
+renderContextMenu { settings: { menuOnTab } } = div_
+  [ h3_ [ text "CONTEXT MENU" ]
   , div_
     [ input [ type_ InputCheckbox
             , checked menuOnTab
             , onChecked $ Toggle MenuOnTab
-            , id_ "menuOnTab"
+            , id "menuOnTab"
             ]
     , label
       [ for "menuOnTab" ]
       [ text "Enable 'Mark as audible' context menu option for tabs" ]
-    , span
-      [ class_ (wrap "tooltip") ]
-      [ text "?"
-      , span
-        [ class_ (wrap "tooltiptext") ]
-        [ text "Adds ability to manually mark tabs as audible. You can always do this by right-clicking the extension icon. A tiny indicator will be added to the extension button, showing that currently active tab was manually marked." ]
-      ]
+    , tooltip "Adds ability to manually mark tabs as audible. You can always do this by right-clicking the extension icon. A tiny indicator will be added to the extension button, showing that currently active tab was manually marked."
     ]
+  ]
 
-  , h3_ [ text "MARK DOMAINS" ]
+renderDomains :: forall m. State -> H.ComponentHTML Action () m
+renderDomains { validationResult, settings: { markAsAudible, websitesOnlyIfNoAudible } } = div_
+  [ h3_ [ text "MARK DOMAINS" ]
   , text $
     "Domains that will be marked as audible permanently."
-  , span
-    [ class_ (wrap "tooltip") ]
-    [ text "?"
-    , span
-      [ class_ (wrap "tooltiptext") ]
-      [ text "List the streaming services you use to navigate to them quickly" ]
-    ]
+  , tooltip "List the streaming services you use to navigate to them quickly"
   , br_
   , div_ $
     markAsAudible `flip mapWithIndex`
     \ix { domain, enabled, withSubdomains } ->
-    let id = "withSubdomains" <> show ix in
+    let elId = "withSubdomains" <> show ix in
     div_ $
     [
       input
       [ type_ InputCheckbox
       , onChecked $ Toggle (DomainEnabled ix)
-      , id_ $ "domain-checkbox-"  <> show ix
+      , id $ "domain-checkbox-"  <> show ix
       , title $ if enabled
                 then "Enabled"
                 else "Disabled"
       , checked enabled ]
-
     , input $
       [ value domain
+      , type_ InputText
       , HE.onValueInput $ TextInput <<< DomainField ix
       ] <>
-
       -- Highlight if invalid
-      guard (Just false == validationResult A.!! ix)
-      [ class_ (wrap "invalid-domain")
+      M.guard (Just false == validationResult.websites A.!! ix)
+      [ class_ (wrap "invalid")
       , title "Invalid domain!" ]
-
     , input [ type_ InputCheckbox
             , onChecked $ Toggle (DomainWithSubdomains ix)
-            , id_ id
+            , id elId
             , checked withSubdomains
             ]
     , label
-      [ for id
+      [ for elId
       , title "Whether to include all subdomains of this domain"  ]
       [ text "Include subdomains" ]
     , input [ type_ InputButton
@@ -233,71 +292,67 @@ render ({ pageState
             , title "Remove this domain from the list"
             ]
     ]
-
   , input [ type_ InputButton
           , class_ $ wrap "button"
           , onClick $ const $ Click AddDomain
           , value "Add domain"
           ]
-
   , br_
   , div_
     [ input [ type_ InputCheckbox
             , checked websitesOnlyIfNoAudible
             , onChecked $ Toggle WebsitesOnlyIfNoAudible
-            , id_ "websitesNoAudible"
+            , id "websitesNoAudible"
             ]
     , label
       [ for "websitesNoAudible" ]
       [ text
         "Only include domains if there are no \"actually\" audible tabs."
-      , span
-        [ class_ (wrap "tooltip") ]
-        [ text "?"
-        , span
-          [ class_ (wrap "tooltiptext") ]
-          [ text "Motivation is that when the sound has stopped, the user may want to jump to the tab where they can click \"play\" again (e.g. a bandcamp tab). But while the sound is playing, there is no reason to cycle through all open tabs from marked websites, because only one of them has sound." ]
-        ]
+      , tooltip "Motivation is that when the sound has stopped, the user may want to jump to the tab where they can click \"play\" again (e.g. a bandcamp tab). But while the sound is playing, there is no reason to cycle through all open tabs from marked websites, because only one of them has sound."
       ]
     ]
-  , br_
-  , br_
-  ] <>
+  ]
 
-  case pageState of
-    Normal ->
-      [ input [ type_ InputButton
-              , onClick $ const $ Click RestoreDefaults
-              , id_ "button-restore"
-              , class_ (wrap "button")
-              , value "Restore defaults"
-              ]
-      ]
+renderRestoreDefaults :: forall m. PageState -> H.ComponentHTML Action () m
+renderRestoreDefaults pageState = div_ case pageState of
+  Normal ->
+    [ input [ type_ InputButton
+            , onClick $ const $ Click RestoreDefaults
+            , id "button-restore"
+            , class_ (wrap "button")
+            , value "Restore defaults"
+            ]
+    ]
+  RestoreConfirmation ->
+    [ text "Do you really want to reset the settings?"
+    , input [ type_ InputButton
+            , onClick $ const $ Click ConfirmRestore
+            , class_ $ wrap "button"
+            , value "OK"
+            ]
+    , input [ type_ InputButton
+            , onClick $ const $ Click CancelRestore
+            , class_ $ wrap "button"
+            , value "Cancel"
+            , ref cancelRestoreRef
+            ]
+    ]
 
-    RestoreConfirmation ->
-      [ text "Do you really want to reset the settings?"
-      , input [ type_ InputButton
-              , onClick $ const $ Click ConfirmRestore
-              , class_ $ wrap "button"
-              , value "OK"
-              ]
-      , input [ type_ InputButton
-              , onClick $ const $ Click CancelRestore
-              , class_ $ wrap "button"
-              , value "Cancel"
-              , ref cancelRestoreRef
-              ]
-      ]
+tooltip :: forall a o m. String -> H.ComponentHTML a o m
+tooltip str = span [ class_ (wrap "tooltip") ]
+  [ text "?"
+  , span
+    [ class_ (wrap "tooltiptext") ]
+    [ text str ]
+  ]
 
 handleAction :: forall o. Action -> H.HalogenM State Action () o Aff Unit
 handleAction (Click button) = do
-
   case button of
     RemoveDomain index -> do
       modifySettings $
         _markAsAudible %~
         (\arr -> fromMaybe arr $ A.deleteAt index arr)
-
     AddDomain -> do
       modifySettings $
         _markAsAudible %~
@@ -305,30 +360,25 @@ handleAction (Click button) = do
                    , enabled: true
                    , withSubdomains: false
                    })
-
     RestoreDefaults -> do
       setPageState RestoreConfirmation
       H.getRef cancelRestoreRef >>= \maybeElem -> do
         for_ maybeElem $ H.liftEffect <<< FFI.setFocus
-
     ConfirmRestore -> do
-      modifySettings $ const initialSettings
+      modifySettings $ const $ toRuntimeSettings initialSettings
       setPageState Normal
-
     CancelRestore -> do
       setPageState Normal
-
   saveSettings
-
 handleAction (TextInput input) = do
   case input of
     DomainField index str -> do
-      modifySettings $
-        _markAsAudible %~
-        ix index %~
-        set _domain str
+      modifySettings $ _markAsAudible <<< ix index <<< _domain .~ str
+    TimeoutField str ->
+      modifySettings $ _notificationsTimeout .~ str
+    DurationField str ->
+      modifySettings $ _maxNotificationDuration .~ str
   saveSettings
-
 handleAction (Toggle checkbox value) = do
   modifySettings $
     case checkbox of
@@ -338,35 +388,66 @@ handleAction (Toggle checkbox value) = do
       SortBackwards -> (_ { sortBackwards = value })
       MenuOnTab     -> (_ { menuOnTab     = value })
       WebsitesOnlyIfNoAudible -> (_ { websitesOnlyIfNoAudible = value })
-
       DomainEnabled index ->
-        _markAsAudible %~
-        ix index %~
-        set _enabled value
-
+        _markAsAudible <<< ix index %~ set _enabled value
       DomainWithSubdomains index ->
-        _markAsAudible %~
-        ix index %~
-        set _withSubdomains value
-
+        _markAsAudible <<< ix index %~ set _withSubdomains value
+      FollowNotifications ->
+        _followNotifications .~ value
   saveSettings
 
+saveSettings :: forall a i o. H.HalogenM State a i o Aff Unit
 saveSettings = do
   settings <- H.gets $ view _settings
-  let validationResult = validate settings
-  H.modify_ $ over _validationResult $
-    const validationResult
-  when (A.foldr conj true validationResult) do
+  let validationResult = validate settings :: Either ValidationResult ValidSettings
+  case validationResult of
+    Left errors -> do
+      H.modify_ $ _validationResult .~ errors
+    Right _ -> do
+      H.modify_ $ _validationResult .~ goodValidationResult
+  for_ validationResult \validSettings ->
     H.liftAff do
-      FFI.save settings
+      FFI.save validSettings
 
-validate :: Settings -> ValidationResult
-validate settings = settings #
-  view _markAsAudible <#>
-  view _domain <#>
-  FFI.isValidDomain
+validate :: Settings -> Either ValidationResult ValidSettings
+validate settings =
+  let
+    websites = (settings ^. _markAsAudible) <#> view (_domain <<< to FFI.isValidDomain)
+    websitesValid = and websites :: Boolean
+    mbTimeout = do
+      n <- Int.fromString settings.notificationsTimeout
+      Alt.guard (n >= 0)
+      pure n
+    mbDuration = do
+      n <- Int.fromString settings.maxNotificationDuration
+      Alt.guard (n >= 0)
+      pure n
+  in
+   case mbTimeout /\ mbDuration /\ websitesValid of
+     Just timeout /\ Just duration /\ true ->
+       Right
+       { includeMuted: settings.includeMuted
+       , allWindows: settings.allWindows
+       , includeFirst: settings.includeFirst
+       , sortBackwards: settings.sortBackwards
+       , menuOnTab: settings.menuOnTab
+       , markAsAudible: settings.markAsAudible
+       , websitesOnlyIfNoAudible: settings.websitesOnlyIfNoAudible
+       , followNotifications: settings.followNotifications
+       , notificationsTimeout: timeout
+       , maxNotificationDuration: duration
+       }
+     _ ->
+       Left
+       { websites: websites
+       , isValidTimeout: isJust mbTimeout
+       , isValidDuration: isJust mbDuration
+       }
 
+modifySettings :: forall a i o. (Settings -> Settings) -> H.HalogenM State a i o Aff Unit
 modifySettings = H.modify_ <<< over _settings
+
+setPageState :: forall a i o. PageState -> H.HalogenM State a i o Aff Unit
 setPageState = H.modify_ <<< set _pageState
 
 cancelRestoreRef = wrap "cancel-restore"
@@ -378,3 +459,6 @@ _domain = prop (SProxy :: SProxy "domain")
 _enabled = prop (SProxy :: SProxy "enabled")
 _markAsAudible = prop (SProxy :: SProxy "markAsAudible")
 _validationResult = prop (SProxy :: SProxy "validationResult")
+_notificationsTimeout = prop (SProxy :: SProxy "notificationsTimeout")
+_followNotifications = prop (SProxy :: SProxy "followNotifications")
+_maxNotificationDuration = prop (SProxy :: SProxy "maxNotificationDuration")
