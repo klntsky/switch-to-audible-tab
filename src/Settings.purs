@@ -19,10 +19,10 @@ import Data.Traversable (for_)
 import Data.Tuple.Nested ((/\))
 import Effect.Aff (Aff)
 import Halogen as H
-import Halogen.HTML (br_, div_, h3_, input, label, text, span)
+import Halogen.HTML (a, br_, div_, h3_, input, label, text, span)
 import Halogen.HTML.Events (onChecked, onClick)
 import Halogen.HTML.Events as HE
-import Halogen.HTML.Properties (InputType(..), checked, class_, for, id, ref, type_, value, title)
+import Halogen.HTML.Properties (InputType(..), checked, class_, for, id, ref, type_, value, title, href, target)
 import Halogen.HTML.Properties as HP
 
 import SettingsFFI as FFI
@@ -141,9 +141,16 @@ render state = div_
 
 renderGeneralSettings :: forall m. State -> H.ComponentHTML Action () m
 renderGeneralSettings
-  { settings: { includeMuted, allWindows, includeFirst, sortBackwards, menuOnTab, markAsAudible } } =
+  { settings: { includeMuted, allWindows, includeFirst, sortBackwards } } =
   div_
-  [ h3_ [ text "GENERAL SETTINGS" ]
+  [ h3_ [ text "HOTKEY" ]
+  , text "Firefox implements unified UI for hotkey preferences. Follow "
+  , a
+    [ href "https://support.mozilla.org/en-US/kb/manage-extension-shortcuts-firefox"
+    , target "_blank" ]
+    [ text "this instruction" ]
+  , text " to change the default hotkey."
+  , h3_ [ text "GENERAL SETTINGS" ]
   , div_
     [ input [ type_ InputCheckbox
                , checked includeMuted

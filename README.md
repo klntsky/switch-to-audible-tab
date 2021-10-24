@@ -10,6 +10,10 @@ This WebExtension allows the user to switch to the tab that is currently making 
 
 # Configuration options
 
+## Hotkey
+
+Firefox implements unified UI for hotkey preferences. The default hotkey [can be changed in Firefox addons settings](https://support.mozilla.org/en-US/kb/manage-extension-shortcuts-firefox).
+
 ## Multiple tabs
 
 If there are multiple audible tabs, the addon will cycle through them and then return to the initial tab (the latter can be opted off at the settings page).
