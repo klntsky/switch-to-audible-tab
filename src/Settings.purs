@@ -153,6 +153,7 @@ renderGeneralSettings
     , label
       [ for "includeMuted" ]
       [ text "Include muted tabs" ]
+    , tooltip "Treat tabs muted by the user as audible"
     ]
   , div_
     [ input [ type_ InputCheckbox
@@ -213,7 +214,8 @@ renderNotifications { validationResult, settings } = div_
     [ text "Prioritize notifications" ]
   , tooltip $ "When checked, tabs with notifications will always be shown first, before ordinary audible tabs."
   , br_
-  , text "Timeout: "
+  , label notificationsDisabledClassLabel
+    [ text "Keep notifications for: " ]
   , input $
     [ type_ InputNumber
     , value settings.notificationsTimeout
@@ -226,10 +228,11 @@ renderNotifications { validationResult, settings } = div_
     , title "Invalid timeout value (must be a non-negative number)"
     ] <>
     notificationsDisabledClass
-  , text " s."
-  , tooltip "Time interval in seconds during which the addon will activate the tab that played notification sound (after the sound stopped)"
+  , label notificationsDisabledClassLabel [ text " s." ]
+  , tooltip "Time interval in seconds during which the addon will treat the tab that played notification sound as audible (after the sound has stopped)"
   , br_
-  , text "Notification duration limit: "
+  , label notificationsDisabledClassLabel
+    [ text "Notification duration limit: " ]
   , input $
     [ type_ InputNumber
     , value settings.maxNotificationDuration
@@ -242,7 +245,8 @@ renderNotifications { validationResult, settings } = div_
     , title "Invalid duration value (must be a non-negative number)"
     ] <>
     notificationsDisabledClass
-  , text " s."
+  , label notificationsDisabledClassLabel
+    [ text " s." ]
   , tooltip "Used to decide if a sound is a notification or not. If a tab remains audible for less than this number of seconds, it will be treated as a tab with notification. 10 seconds is the recommended value."
   ]
   where

@@ -8,7 +8,7 @@ This WebExtension allows the user to switch to the tab that is currently making 
 
 **Alt+Shift+A** hotkey can be used instead of the toolbar button.
 
-# About
+# Configuration options
 
 ## Multiple tabs
 
@@ -18,9 +18,17 @@ If there are audible tabs belonging to other windows, these windows will be swit
 
 It is also possible to control the order in which tabs will be visited: available options are left-to-right and right-to-left. This will only make difference if there are more than two tabs in a cycle.
 
+If there are no audible tabs, the addon will do nothing.
+
+## Notifications
+
+Some websites play short notification sounds when user's attention is needed. Notification following feature makes it possible to react to a notification during some configurable period of time after the notification sound has ended. A sound is treated as a notification if it is not coming from currently active tab AND its duration is less than notification duration limit (configurable).
+
+Notifications can be given first priority or treated the same.
+
 ## Muted tabs
 
-If there are no audible tabs, the addon will do nothing. Tabs that are muted by the user are also considered audible (this can be changed at the settings page).
+Tabs that are muted by the user are also considered audible (this can be changed at the settings page).
 
 ## Marking tabs as audible by domain
 
