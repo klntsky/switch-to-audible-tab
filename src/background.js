@@ -12,7 +12,8 @@ const defaults = {
     websitesOnlyIfNoAudible: false,
     followNotifications: true,
     notificationsTimeout: 10,
-    maxNotificationDuration: 10
+    maxNotificationDuration: 10,
+    notificationsFirst: true,
 };
 
 // A flag indicating that no tabs are selected by queries.
@@ -34,7 +35,14 @@ const MENU_ID = "mark-as-audible";
 
 // Used to follow notifications
 const currentlyAudible = new Map(); // tabId => timestamp
-let notifications = []; // [{ tabId : Int, tabIndex: Int }]
+
+const catcher = (f) => async function () {
+    try {
+        return await f(...arguments);
+    } catch (e) {
+        console.log('Error in', unescape(f), e);
+    }
+};
 
 const addMarkedTab = tab => {
   if (!marked.some(mkd => mkd.id === tab.id)) {
@@ -64,7 +72,8 @@ const runSettingsMigrations = settings => {
         'websitesOnlyIfNoAudible',
         'followNotifications',
         'notificationsTimeout',
-        'maxNotificationDuration'
+        'maxNotificationDuration',
+        'notificationsFirst'
     ];
 
     for (let prop of added_props) {
@@ -77,9 +86,10 @@ const runSettingsMigrations = settings => {
 };
 
 /** Returns settings object */
-const loadSettings = () => browser.storage.local.get({
-    settings: defaults
-}).then(r => {
+const loadSettings = catcher(async () => {
+    const r = await browser.storage.local.get({
+        settings: defaults
+    });
 
     // Set global variable
     settings = runSettingsMigrations(r.settings) ;
@@ -173,7 +183,7 @@ browser.tabs.onRemoved.addListener(tabId => {
         firstActive = null;
     }
     marked = marked.filter(mkd => mkd.id !== tabId);
-    notifications = notifications.filter(tb => tb.id !== tabId);
+    currentlyAudible.delete(tabId);
 });
 
 // Track the last active tab which was activated by the user or another
@@ -195,16 +205,16 @@ browser.tabs.onActivated.addListener(async ({ tabId, windowId }) => {
     }
 });
 
-browser.windows.onFocusChanged.addListener(async (windowId) => {
+browser.windows.onFocusChanged.addListener(catcher(async (windowId) => {
     const activeTab = await getActiveTab();
     const checked = marked.some(mkd => mkd.id === activeTab.id);
     updateIcon(checked);
     if (lastTabs.every(tab => tab.id !== activeTab.id)) {
         firstActive = activeTab;
     }
-});
+}));
 
-browser.browserAction.onClicked.addListener(async () => {
+browser.browserAction.onClicked.addListener(catcher(async () => {
     // Choose how to switch to the tab, depending on `settings.allWindows`.
     // Maintain waitingForActivation flag.
     const switchTo = async (tab, activeTab) => {
@@ -265,11 +275,28 @@ browser.browserAction.onClicked.addListener(async () => {
             tabs = [...tabs, ...await query(refine({ url: permanentlyMarked }))];
     }
 
-    tabs = sortTabs(tabs);
-
-    // More recent notifications should always be first.
     if (settings.followNotifications) {
-        tabs = [...notifications, ...tabs];
+
+        // Extract notifications from currentlyAudible
+        const now = Date.now();
+        let notifications = [...currentlyAudible.values()].filter(([start, end, tab]) => {
+            end = end || now;
+            return end - start < settings.maxNotificationDuration * 1000;
+        });
+
+        // Sort by starting time. Newest first.
+        notifications.sort((a, b) => b[0] - a[0]);
+        notifications = notifications.map(([_start, _end, tab]) => tab);
+
+        if (settings.notificationsFirst) {
+            // Prepend before others
+            tabs = [...notifications, ...sortTabs(tabs)];
+        } else {
+            // Sort everything
+            tabs = sortTabs([...notifications, ...tabs]);
+        }
+    } else {
+        tabs = sortTabs(tabs);
     }
 
     tabs = filterRepeating(tabs);
@@ -302,7 +329,7 @@ browser.browserAction.onClicked.addListener(async () => {
     default:
         await switchTo(next, activeTab);
     }
-});
+}));
 
 browser.menus.onShown.addListener(async function(info, tab) {
     if (info.menuIds.includes(MENU_ID)) {
@@ -339,24 +366,18 @@ browser.menus.onClicked.addListener(async function(info, tab) {
 browser.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
     if (typeof changeInfo.audible == 'boolean') {
         if (changeInfo.audible) {
-            currentlyAudible.set(tabId, Date.now());
+            currentlyAudible.set(tabId, [Date.now(), null, tab]);
         } else {
             if (currentlyAudible.has(tabId)) {
-                const startTime = currentlyAudible.get(tabId);
-                const duration = Date.now() - startTime;
-                currentlyAudible.delete(tabId);
-                // the sound is short enough to be considered a notification
-                if (duration < settings.maxNotificationDuration * 1000) {
-                    // We are not trying to add a tab we are currently on.
-                    if ((await getActiveTab()).id != tab.id) {
-                        // Add it to notifications
-                        notifications.unshift(tab);
-                        // And schedule a deletion
-                        setTimeout(() => {
-                            notifications = notifications.filter(tb => tb.id != tabId);
-                        }, settings.notificationsTimeout * 1000);
+                const [startTime, _end, _tab] = currentlyAudible.get(tabId);
+                const now = Date.now();
+                currentlyAudible.set(tabId, [startTime, now, tab]);
+                setTimeout(() => {
+                    // Delete only if we added it.
+                    if (currentlyAudible.get(tabId)[0] == startTime) {
+                        currentlyAudible.delete(tabId);
                     }
-                }
+                }, settings.notificationsTimeout * 1000);
             }
         }
     }

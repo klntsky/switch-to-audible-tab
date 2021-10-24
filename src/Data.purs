@@ -17,4 +17,5 @@ type ValidSettings =
   , followNotifications :: Boolean
   , notificationsTimeout :: Int
   , maxNotificationDuration :: Int
+  , notificationsFirst :: Boolean
   }

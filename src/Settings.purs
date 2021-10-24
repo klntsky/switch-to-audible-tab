@@ -65,6 +65,7 @@ type Settings =
   , followNotifications :: Boolean
   , notificationsTimeout :: String
   , maxNotificationDuration :: String
+  , notificationsFirst :: Boolean
   }
 
 data CheckBox
@@ -77,6 +78,7 @@ data CheckBox
   | DomainWithSubdomains Int
   | WebsitesOnlyIfNoAudible
   | FollowNotifications
+  | NotificationsFirst
 
 data Button
   = RemoveDomain Int
@@ -108,6 +110,7 @@ initialSettings =
   , followNotifications: true
   , notificationsTimeout: 10
   , maxNotificationDuration: 10
+  , notificationsFirst: true
   }
 
 toRuntimeSettings :: ValidSettings -> Settings
@@ -185,23 +188,33 @@ renderGeneralSettings
   ]
 
 renderNotifications :: forall m o. State -> H.ComponentHTML Action o m
-renderNotifications { validationResult, settings: { followNotifications, notificationsTimeout, maxNotificationDuration } } = div_
+renderNotifications { validationResult, settings } = div_
   [ h3_ [ text "NOTIFICATIONS" ]
   , input [ type_ InputCheckbox
-          , checked followNotifications
+          , checked settings.followNotifications
           , onChecked $ Toggle FollowNotifications
           , id "notifications"
           ]
   , label
     [ for "notifications" ]
     [ text "Follow notifications" ]
-  , tooltip $ "Some websites play short notification sounds when user's attention is needed. This option allows to react to a notification during some fixed period of time after the notification sound has ended. A sound is treated as a notification if it is not coming from currently active tab AND its duration is less than " <> maxNotificationDuration <> " seconds. Tabs with notifications will always be shown first, before ordinary audible tabs. However, when the notification sound is still playing, the usual ordering (left-to-right or right-to-left) will apply (because it's impossible to know if a sound is a notification or not, before we know its duration)."
+  , tooltip $ "Some websites play short notification sounds when user's attention is needed. This option allows to react to a notification during some fixed period of time after the notification sound has ended. A sound is treated as a notification if it is not coming from currently active tab AND its duration is less than notification duration limit (currently set to " <> settings.maxNotificationDuration <> " seconds)."
+  , br_
+  , input [ type_ InputCheckbox
+          , checked settings.notificationsFirst
+          , onChecked $ Toggle NotificationsFirst
+          , id "notifications-first"
+          ]
+  , label
+    [ for "notifications-first" ]
+    [ text "Prioritize notifications" ]
+  , tooltip $ "When checked, tabs with notifications will always be shown first, before ordinary audible tabs."
   , br_
   , br_
   , text "Timeout: "
   , input $
     [ type_ InputNumber
-    , value notificationsTimeout
+    , value settings.notificationsTimeout
     , HE.onValueInput $ TextInput <<< TimeoutField
     , id "timeout-field"
     ] <>
@@ -217,7 +230,7 @@ renderNotifications { validationResult, settings: { followNotifications, notific
   , text "Notification duration limit: "
   , input $
     [ type_ InputNumber
-    , value maxNotificationDuration
+    , value settings.maxNotificationDuration
     , HE.onValueInput $ TextInput <<< DurationField
     , id "duration-field"
     ] <>
@@ -394,6 +407,8 @@ handleAction (Toggle checkbox value) = do
         _markAsAudible <<< ix index %~ set _withSubdomains value
       FollowNotifications ->
         _followNotifications .~ value
+      NotificationsFirst ->
+        _notificationsFirst .~ value
   saveSettings
 
 saveSettings :: forall a i o. H.HalogenM State a i o Aff Unit
@@ -436,6 +451,7 @@ validate settings =
        , followNotifications: settings.followNotifications
        , notificationsTimeout: timeout
        , maxNotificationDuration: duration
+       , notificationsFirst: settings.notificationsFirst
        }
      _ ->
        Left
@@ -462,3 +478,4 @@ _validationResult = prop (SProxy :: SProxy "validationResult")
 _notificationsTimeout = prop (SProxy :: SProxy "notificationsTimeout")
 _followNotifications = prop (SProxy :: SProxy "followNotifications")
 _maxNotificationDuration = prop (SProxy :: SProxy "maxNotificationDuration")
+_notificationsFirst = prop (SProxy :: SProxy "notificationsFirst")
