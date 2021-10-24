@@ -101,3 +101,8 @@ label {
 #timeout-field, #duration-field {
     width: 5em;
 }
+
+.disabled {
+    pointer-events:none;
+    opacity: 0.6;
+}

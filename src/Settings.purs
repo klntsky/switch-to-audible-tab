@@ -23,6 +23,7 @@ import Halogen.HTML (br_, div_, h3_, input, label, text, span)
 import Halogen.HTML.Events (onChecked, onClick)
 import Halogen.HTML.Events as HE
 import Halogen.HTML.Properties (InputType(..), checked, class_, for, id, ref, type_, value, title)
+import Halogen.HTML.Properties as HP
 
 import SettingsFFI as FFI
 import Data (ValidSettings)
@@ -200,13 +201,15 @@ renderNotifications { validationResult, settings } = div_
     [ text "Follow notifications" ]
   , tooltip $ "Some websites play short notification sounds when user's attention is needed. This option allows to react to a notification during some fixed period of time after the notification sound has ended. A sound is treated as a notification if it is not coming from currently active tab AND its duration is less than notification duration limit (currently set to " <> settings.maxNotificationDuration <> " seconds)."
   , br_
-  , input [ type_ InputCheckbox
-          , checked settings.notificationsFirst
-          , onChecked $ Toggle NotificationsFirst
-          , id "notifications-first"
-          ]
+  , input $
+    [ type_ InputCheckbox
+    , checked settings.notificationsFirst
+    , onChecked $ Toggle NotificationsFirst
+    , id "notifications-first"
+    ] <>
+    notificationsDisabledClass
   , label
-    [ for "notifications-first" ]
+    ([ for "notifications-first" ] <> notificationsDisabledClassLabel)
     [ text "Prioritize notifications" ]
   , tooltip $ "When checked, tabs with notifications will always be shown first, before ordinary audible tabs."
   , br_
@@ -222,7 +225,8 @@ renderNotifications { validationResult, settings } = div_
     M.guard (not validationResult.isValidTimeout)
     [ class_ (wrap "invalid")
     , title "Invalid timeout value (must be a non-negative number)"
-    ]
+    ] <>
+    notificationsDisabledClass
   , text " s."
   , tooltip "Time interval in seconds during which the addon will activate the tab that played notification sound (even though the sound is not playing anymore)"
   , br_
@@ -238,10 +242,20 @@ renderNotifications { validationResult, settings } = div_
     M.guard (not validationResult.isValidDuration)
     [ class_ (wrap "invalid")
     , title "Invalid duration value (must be a non-negative number)"
-    ]
+    ] <>
+    notificationsDisabledClass
   , text " s."
   , tooltip "Used to decide if a sound is a notification or not. 10 is the recommended value."
   ]
+  where
+    notificationsDisabledClass
+      :: forall rest p. Array (HP.IProp (class :: String, disabled :: Boolean | rest) p)
+    notificationsDisabledClass =
+      M.guard (not settings.followNotifications) [ class_ (wrap "disabled"), HP.disabled true ]
+    notificationsDisabledClassLabel
+      :: forall rest p. Array (HP.IProp (class :: String | rest) p)
+    notificationsDisabledClassLabel =
+      M.guard (not settings.followNotifications) [ class_ (wrap "disabled") ]
 
 renderContextMenu :: forall m o. State -> H.ComponentHTML Action o m
 renderContextMenu { settings: { menuOnTab } } = div_
