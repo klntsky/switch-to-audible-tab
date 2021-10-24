@@ -34,7 +34,7 @@ let marked = [];
 const MENU_ID = "mark-as-audible";
 
 // Used to follow notifications
-const currentlyAudible = new Map(); // tabId => timestamp
+const possibleNotifications = new Map(); // tabId => timestamp
 
 const catcher = (f) => async function () {
     try {
@@ -183,7 +183,7 @@ browser.tabs.onRemoved.addListener(tabId => {
         firstActive = null;
     }
     marked = marked.filter(mkd => mkd.id !== tabId);
-    currentlyAudible.delete(tabId);
+    possibleNotifications.delete(tabId);
 });
 
 // Track the last active tab which was activated by the user or another
@@ -277,9 +277,9 @@ browser.browserAction.onClicked.addListener(catcher(async () => {
 
     if (settings.followNotifications) {
 
-        // Extract notifications from currentlyAudible
+        // Extract notifications from possibleNotifications
         const now = Date.now();
-        let notifications = [...currentlyAudible.values()].filter(([start, end, tab]) => {
+        let notifications = [...possibleNotifications.values()].filter(([start, end, tab]) => {
             end = end || now;
             return end - start < settings.maxNotificationDuration * 1000;
         });
@@ -363,22 +363,24 @@ browser.menus.onClicked.addListener(async function(info, tab) {
     }
 });
 
-browser.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
+browser.tabs.onUpdated.addListener(catcher(async (tabId, changeInfo, tab) => {
     if (typeof changeInfo.audible == 'boolean') {
         if (changeInfo.audible) {
-            currentlyAudible.set(tabId, [Date.now(), null, tab]);
+            if ((await getActiveTab()).id != tabId) {
+                possibleNotifications.set(tabId, [Date.now(), null, tab]);
+            }
         } else {
-            if (currentlyAudible.has(tabId)) {
-                const [startTime, _end, _tab] = currentlyAudible.get(tabId);
+            if (possibleNotifications.has(tabId)) {
+                const [startTime, _end, _tab] = possibleNotifications.get(tabId);
                 const now = Date.now();
-                currentlyAudible.set(tabId, [startTime, now, tab]);
+                possibleNotifications.set(tabId, [startTime, now, tab]);
                 setTimeout(() => {
                     // Delete only if we added it.
-                    if (currentlyAudible.get(tabId)[0] == startTime) {
-                        currentlyAudible.delete(tabId);
+                    if (possibleNotifications.get(tabId)[0] == startTime) {
+                        possibleNotifications.delete(tabId);
                     }
                 }, settings.notificationsTimeout * 1000);
             }
         }
     }
-});
+}));

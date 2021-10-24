@@ -213,7 +213,6 @@ renderNotifications { validationResult, settings } = div_
     [ text "Prioritize notifications" ]
   , tooltip $ "When checked, tabs with notifications will always be shown first, before ordinary audible tabs."
   , br_
-  , br_
   , text "Timeout: "
   , input $
     [ type_ InputNumber
@@ -228,8 +227,7 @@ renderNotifications { validationResult, settings } = div_
     ] <>
     notificationsDisabledClass
   , text " s."
-  , tooltip "Time interval in seconds during which the addon will activate the tab that played notification sound (even though the sound is not playing anymore)"
-  , br_
+  , tooltip "Time interval in seconds during which the addon will activate the tab that played notification sound (after the sound stopped)"
   , br_
   , text "Notification duration limit: "
   , input $
@@ -245,7 +243,7 @@ renderNotifications { validationResult, settings } = div_
     ] <>
     notificationsDisabledClass
   , text " s."
-  , tooltip "Used to decide if a sound is a notification or not. 10 is the recommended value."
+  , tooltip "Used to decide if a sound is a notification or not. If a tab remains audible for less than this number of seconds, it will be treated as a tab with notification. 10 seconds is the recommended value."
   ]
   where
     notificationsDisabledClass

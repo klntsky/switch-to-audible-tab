@@ -1,3 +1,9 @@
+h3 {
+    font-size: 1rem;
+    margin-top: 1rem;
+    margin-bottom: 0.4rem;
+}
+
 .button {
     vertical-align: middle;
     background-color: #EEE;
