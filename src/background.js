@@ -31,7 +31,8 @@ let lastTabs = [];
 const query = browser.tabs.query;
 // Tabs marked as audible by the user
 let marked = [];
-const MENU_ID = "mark-as-audible";
+const MARK_MENU_ID = "mark-as-audible";
+const SETTINGS_MENU_ID = "open-settings";
 
 // Used to follow notifications
 const possibleNotifications = new Map(); // tabId => timestamp
@@ -156,9 +157,15 @@ const nextTab = (tabs, activeTab) => {
 };
 
 browser.menus.create({
-    id: MENU_ID,
+    id: MARK_MENU_ID,
     type: "checkbox",
     title: "Mark this tab as audible",
+    contexts: ["browser_action"],
+});
+
+browser.menus.create({
+    id: SETTINGS_MENU_ID,
+    title: "Open Preferences",
     contexts: ["browser_action"],
 });
 
@@ -169,7 +176,7 @@ const updateMenuContexts = async settings => {
         contexts.push("tab");
     }
 
-    await browser.menus.update(MENU_ID, {
+    await browser.menus.update(MARK_MENU_ID, {
         contexts
     });
 };
@@ -191,7 +198,7 @@ browser.tabs.onRemoved.addListener(tabId => {
 browser.tabs.onActivated.addListener(async ({ tabId, windowId }) => {
     const checked = marked.some(mkd => mkd.id === tabId);
     // no need to await
-    browser.menus.update(MENU_ID, { checked });
+    browser.menus.update(MARK_MENU_ID, { checked });
     updateIcon(checked);
 
     if (waitingForActivation) {
@@ -332,7 +339,7 @@ browser.browserAction.onClicked.addListener(catcher(async () => {
 }));
 
 browser.menus.onShown.addListener(async function(info, tab) {
-    if (info.menuIds.includes(MENU_ID)) {
+    if (info.menuIds.includes(MARK_MENU_ID)) {
         let checked = false;
 
         if (info.viewType === "sidebar") {
@@ -343,14 +350,16 @@ browser.menus.onShown.addListener(async function(info, tab) {
             checked = marked.some(mkd => mkd.id === activeTab.id);
         }
 
-        await browser.menus.update(MENU_ID, { checked });
+        await browser.menus.update(MARK_MENU_ID, { checked });
         await browser.menus.refresh();
     }
 });
 
 browser.menus.onClicked.addListener(async function(info, tab) {
     const activeTab = await getActiveTab();
-    if (info.menuItemId === MENU_ID) {
+    if (info.menuItemId === SETTINGS_MENU_ID) {
+        browser.runtime.openOptionsPage();
+    } else if (info.menuItemId === MARK_MENU_ID) {
         if (info.checked) {
             addMarkedTab(tab);
         } else {
