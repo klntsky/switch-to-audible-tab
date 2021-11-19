@@ -6,7 +6,7 @@
 
 This WebExtension allows the user to switch to the tab that is currently making sound.
 
-**Alt+Shift+A** hotkey can be used instead of the toolbar button.
+Default **Alt+Shift+A** hotkey can be used instead of the toolbar button.
 
 # Configuration options
 

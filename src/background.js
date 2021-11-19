@@ -398,3 +398,9 @@ browser.tabs.onUpdated.addListener(catcher(async (tabId, changeInfo, tab) => {
         }
     }
 }));
+
+browser.runtime.onInstalled.addListener(details => {
+    if (details.reason == "install") {
+        browser.runtime.openOptionsPage();
+    }
+});

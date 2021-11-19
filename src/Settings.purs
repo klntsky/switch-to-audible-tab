@@ -19,7 +19,7 @@ import Data.Traversable (for_)
 import Data.Tuple.Nested ((/\))
 import Effect.Aff (Aff)
 import Halogen as H
-import Halogen.HTML (a, br_, div, div_, h3_, input, label, text, span)
+import Halogen.HTML (a, br_, div, div_, h2_, h3_, input, label, text, span)
 import Halogen.HTML as HH
 import Halogen.HTML.Events (onChecked, onClick)
 import Halogen.HTML.Events as HE
@@ -133,7 +133,8 @@ mkComponent s = H.mkComponent
 
 render :: forall m. State -> H.ComponentHTML Action () m
 render state = div [ id "container" ]
-  [ renderGeneralSettings state
+  [ if FFI.isGoogle then h2_ [ text "Switch to Audible Tab Preferences" ] else text ""
+  , renderGeneralSettings state
   , renderNotifications state
   , renderContextMenu state
   , renderDomains state
@@ -154,7 +155,7 @@ renderGeneralSettings
         , target "_blank"
         , onClick $ const OpenHotkeySettings ]
         [ text "this link" ]
-      , text " to change the default hotkey."
+      , text " to set the hotkey."
       ]
     else
       [ h3_ [ text "HOTKEY" ]
