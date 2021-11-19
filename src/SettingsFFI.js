@@ -1,5 +1,7 @@
 /* global browser exports */
 
+exports.isGoogle = navigator.vendor === "Google Inc.";
+
 exports.save_ = function (settings) {
     return function () {
         return browser.storage.local.set({ settings: settings });
@@ -49,4 +51,8 @@ exports.isValidDomain = function (v, opts) {
     });
 
     return isValid;
+};
+
+exports.openHotkeySettings = function () {
+    browser.tabs.create({url: 'chrome://extensions/shortcuts'});
 };

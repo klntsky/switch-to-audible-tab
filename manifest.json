@@ -7,12 +7,12 @@
         "128": "img/128.png"
     },
     "background": {
-        "scripts": ["src/background.js"]
+        "scripts": ["dist/browser-polyfill.js", "src/background.js"]
     },
     "options_ui": {
         "page": "static/settings.html",
         "browser_style": false,
-        "open_in_tab": false
+        "open_in_tab": true
     },
     "browser_action": {
         "default_icon": {
@@ -22,13 +22,14 @@
     },
     "commands": {
         "_execute_browser_action": {
+            "description": "Switch to audible tab",
             "suggested_key": {
                 "default": "Alt+Shift+A"
             }
         }
     },
     "permissions": [
-        "tabs", "storage", "menus", "activeTab"
+        "tabs", "storage", "contextMenus", "activeTab"
     ],
     "applications": {
         "gecko": {

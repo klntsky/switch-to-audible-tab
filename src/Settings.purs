@@ -19,7 +19,8 @@ import Data.Traversable (for_)
 import Data.Tuple.Nested ((/\))
 import Effect.Aff (Aff)
 import Halogen as H
-import Halogen.HTML (a, br_, div_, h3_, input, label, text, span)
+import Halogen.HTML (a, br_, div, div_, h3_, input, label, text, span)
+import Halogen.HTML as HH
 import Halogen.HTML.Events (onChecked, onClick)
 import Halogen.HTML.Events as HE
 import Halogen.HTML.Properties (InputType(..), checked, class_, for, id, ref, type_, value, title, href, target)
@@ -97,6 +98,7 @@ data Action
   = Toggle CheckBox Boolean
   | Click Button
   | TextInput Input
+  | OpenHotkeySettings
 
 -- This should be synchronised with background.js
 initialSettings :: ValidSettings
@@ -130,7 +132,7 @@ mkComponent s = H.mkComponent
     }
 
 render :: forall m. State -> H.ComponentHTML Action () m
-render state = div_
+render state = div [ id "container" ]
   [ renderGeneralSettings state
   , renderNotifications state
   , renderContextMenu state
@@ -142,15 +144,28 @@ render state = div_
 renderGeneralSettings :: forall m. State -> H.ComponentHTML Action () m
 renderGeneralSettings
   { settings: { includeMuted, allWindows, includeFirst, sortBackwards } } =
-  div_
-  [ h3_ [ text "HOTKEY" ]
-  , text "Firefox implements unified UI for hotkey preferences. Follow "
-  , a
-    [ href "https://support.mozilla.org/en-US/kb/manage-extension-shortcuts-firefox"
-    , target "_blank" ]
-    [ text "this instruction" ]
-  , text " to change the default hotkey."
-  , h3_ [ text "GENERAL SETTINGS" ]
+  div_ $ (
+    if FFI.isGoogle
+    then
+      [ h3_ [ text "HOTKEY" ]
+      , text "Chromium-based browsers implement unified UI for hotkey preferences. Follow "
+      , a
+        [ href "chrome://extensions/shortcuts"
+        , target "_blank"
+        , onClick $ const OpenHotkeySettings ]
+        [ text "this link" ]
+      , text " to change the default hotkey."
+      ]
+    else
+      [ h3_ [ text "HOTKEY" ]
+      , text "Firefox implements unified UI for hotkey preferences. Follow "
+      , a
+        [ href "https://support.mozilla.org/en-US/kb/manage-extension-shortcuts-firefox"
+        , target "_blank" ]
+        [ text "this instruction" ]
+      , text " to change the default hotkey."
+      ]) <>
+  [ h3_ [ text "GENERAL SETTINGS" ]
   , div_
     [ input [ type_ InputCheckbox
                , checked includeMuted
@@ -433,6 +448,8 @@ handleAction (Toggle checkbox value) = do
       NotificationsFirst ->
         _notificationsFirst .~ value
   saveSettings
+handleAction OpenHotkeySettings = do
+  H.liftEffect FFI.openHotkeySettings
 
 saveSettings :: forall a i o. H.HalogenM State a i o Aff Unit
 saveSettings = do

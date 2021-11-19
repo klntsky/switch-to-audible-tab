@@ -112,3 +112,9 @@ label {
     pointer-events:none;
     opacity: 0.6;
 }
+
+#container {
+  position: fixed;
+  left: 50%;
+  transform: translate(-50%, 0%);
+}

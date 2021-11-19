@@ -3,6 +3,8 @@ module SettingsFFI
        , load
        , setFocus
        , isValidDomain
+       , isGoogle
+       , openHotkeySettings
        )
 where
 
@@ -31,3 +33,5 @@ foreign import setFocus :: Element -> Effect Unit
 foreign import save_ :: ValidSettings -> Effect (Promise Unit)
 foreign import load_ :: ValidSettings -> Effect (Promise Json)
 foreign import isValidDomain :: String -> Boolean
+foreign import isGoogle :: Boolean
+foreign import openHotkeySettings :: Effect Unit

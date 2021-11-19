@@ -1,5 +1,7 @@
 /* global browser */
 
+const isGoogle = navigator.vendor === "Google Inc.";
+
 /** Default settings */
 // This should be synchronised with Settings.purs
 const defaults = {
@@ -28,7 +30,7 @@ let firstActive = null; // or { id: <tab id>, windowId: <window id>, ... }
 // Whether we are waiting for tab activation (semaphore variable for switchTo)
 let waitingForActivation = false;
 let lastTabs = [];
-const query = browser.tabs.query;
+
 // Tabs marked as audible by the user
 let marked = [];
 const MARK_MENU_ID = "mark-as-audible";
@@ -156,30 +158,30 @@ const nextTab = (tabs, activeTab) => {
     return FromStart;
 };
 
-browser.menus.create({
+browser.contextMenus.create({
     id: MARK_MENU_ID,
     type: "checkbox",
     title: "Mark this tab as audible",
     contexts: ["browser_action"],
 });
 
-browser.menus.create({
+browser.contextMenus.create({
     id: SETTINGS_MENU_ID,
     title: "Open Preferences",
     contexts: ["browser_action"],
 });
 
 // Add an item to context menu for tabs.
-const updateMenuContexts = async settings => {
+const updateMenuContexts = catcher(async settings => {
     const contexts = ["browser_action"];
-    if (settings.menuOnTab) {
+    if (settings.menuOnTab && !isGoogle) {
         contexts.push("tab");
     }
-
-    await browser.menus.update(MARK_MENU_ID, {
+    await browser.contextMenus.update(MARK_MENU_ID, {
         contexts
     });
-};
+});
+
 
 loadSettings().then(updateMenuContexts);
 getActiveTab().then(tab => firstActive = tab);
@@ -198,13 +200,13 @@ browser.tabs.onRemoved.addListener(tabId => {
 browser.tabs.onActivated.addListener(async ({ tabId, windowId }) => {
     const checked = marked.some(mkd => mkd.id === tabId);
     // no need to await
-    browser.menus.update(MARK_MENU_ID, { checked });
+    browser.contextMenus.update(MARK_MENU_ID, { checked });
     updateIcon(checked);
 
     if (waitingForActivation) {
         waitingForActivation = false;
     } else {
-        const index = (await query({}).then(r => r.find(r => r.id == tabId))).index;
+        const index = (await browser.tabs.query({}).then(r => r.find(r => r.id == tabId))).index;
 
         // This tab was activated by the user or another extension,
         // therefore we need to set it as firstActive.
@@ -256,12 +258,12 @@ browser.browserAction.onClicked.addListener(catcher(async () => {
         return query;
     };
 
-    tabs = [...tabs, ...await query(refine({ audible: true }))];
+    tabs = [...tabs, ...await browser.tabs.query(refine({ audible: true }))];
 
     const areReallyAudible = tabs.length != 0;
 
     if (settings.includeMuted)
-        tabs = [...tabs, ...await query(refine({ muted: true }))];
+        tabs = [...tabs, ...await browser.tabs.query(refine({ muted: true }))];
 
     if (marked.length)
         tabs = [...tabs, ...marked];
@@ -279,7 +281,7 @@ browser.browserAction.onClicked.addListener(catcher(async () => {
         );
 
         if (permanentlyMarked.length)
-            tabs = [...tabs, ...await query(refine({ url: permanentlyMarked }))];
+            tabs = [...tabs, ...await browser.tabs.query(refine({ url: permanentlyMarked }))];
     }
 
     if (settings.followNotifications) {
@@ -338,7 +340,9 @@ browser.browserAction.onClicked.addListener(catcher(async () => {
     }
 }));
 
-browser.menus.onShown.addListener(async function(info, tab) {
+
+// WONTFIX: api is not supported, but also we can't use tabs context menus.
+!isGoogle && browser.contextMenus.onShown.addListener(async function(info, tab) {
     if (info.menuIds.includes(MARK_MENU_ID)) {
         let checked = false;
 
@@ -350,12 +354,13 @@ browser.menus.onShown.addListener(async function(info, tab) {
             checked = marked.some(mkd => mkd.id === activeTab.id);
         }
 
-        await browser.menus.update(MARK_MENU_ID, { checked });
-        await browser.menus.refresh();
+        await browser.contextMenus.update(MARK_MENU_ID, { checked });
+        await browser.contextMenus.refresh();
     }
 });
 
-browser.menus.onClicked.addListener(async function(info, tab) {
+browser.contextMenus.onClicked.addListener(async function(info, tab) {
+
     const activeTab = await getActiveTab();
     if (info.menuItemId === SETTINGS_MENU_ID) {
         browser.runtime.openOptionsPage();
