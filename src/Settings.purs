@@ -19,7 +19,7 @@ import Data.Traversable (for_)
 import Data.Tuple.Nested ((/\))
 import Effect.Aff (Aff)
 import Halogen as H
-import Halogen.HTML (a, br_, div, div_, h2_, h3_, input, label, text, span)
+import Halogen.HTML (a, br_, div, div_, h2_, h3_, hr_, input, label, text, span)
 import Halogen.HTML as HH
 import Halogen.HTML.Events (onChecked, onClick)
 import Halogen.HTML.Events as HE
@@ -140,6 +140,7 @@ render state = div [ id "container" ]
   , renderDomains state
   , br_, br_
   , renderRestoreDefaults state.pageState
+  , hr_
   , renderDonateLink
   ]
 
@@ -284,20 +285,22 @@ renderNotifications { validationResult, settings } = div_
       M.guard (not settings.followNotifications) [ class_ (wrap "disabled") ]
 
 renderContextMenu :: forall m o. State -> H.ComponentHTML Action o m
-renderContextMenu { settings: { menuOnTab } } = div_
-  [ h3_ [ text "CONTEXT MENU" ]
-  , div_
-    [ input [ type_ InputCheckbox
-            , checked menuOnTab
-            , onChecked $ Toggle MenuOnTab
-            , id "menuOnTab"
-            ]
-    , label
-      [ for "menuOnTab" ]
-      [ text "Enable 'Mark as audible' context menu option for tabs" ]
-    , tooltip "Adds ability to manually mark tabs as audible. You can always do this by right-clicking the extension icon. A tiny indicator will be added to the extension button, showing that currently active tab was manually marked."
+renderContextMenu { settings: { menuOnTab } } =
+  if FFI.isGoogle then text "" else
+    div_
+    [ h3_ [ text "CONTEXT MENU" ]
+    , div_
+      [ input [ type_ InputCheckbox
+              , checked menuOnTab
+              , onChecked $ Toggle MenuOnTab
+              , id "menuOnTab"
+              ]
+      , label
+        [ for "menuOnTab" ]
+        [ text "Enable 'Mark as audible' context menu option for tabs" ]
+      , tooltip "Adds ability to manually mark tabs as audible. You can always do this by right-clicking the extension icon. A tiny indicator will be added to the extension button, showing that currently active tab was manually marked."
+      ]
     ]
-  ]
 
 renderDomains :: forall m. State -> H.ComponentHTML Action () m
 renderDomains { validationResult, settings: { markAsAudible, websitesOnlyIfNoAudible } } = div_
@@ -394,10 +397,14 @@ renderRestoreDefaults pageState = div_ case pageState of
 renderDonateLink :: forall m a. H.ComponentHTML a () m
 renderDonateLink =
   div [ id "dev-note" ]
-  [ text "🍩 This extension is free and "
+  [ span [ class_ $ wrap "dev-note-icon" ] [ text "🍺" ]
+  , text " This extension is free and "
   , a [ href "https://github.com/klntsky/switch-to-audible-tab/", target "_blank" ]
     [ text "open-source" ]
-  , text ". Consider donating if you like my work: "
+  , text "."
+  , br_
+  , span [ class_ $ wrap "dev-note-icon" ] [ text "🍩" ]
+  , text " Consider donating if you like my work: "
   , a [ href "https://paypal.me/klntsky", target "_blank" ]
     [ text "Paypal" ]
   , text ", "
