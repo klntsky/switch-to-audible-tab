@@ -140,6 +140,7 @@ render state = div [ id "container" ]
   , renderDomains state
   , br_, br_
   , renderRestoreDefaults state.pageState
+  , renderDonateLink
   ]
 
 renderGeneralSettings :: forall m. State -> H.ComponentHTML Action () m
@@ -149,22 +150,22 @@ renderGeneralSettings
     if FFI.isGoogle
     then
       [ h3_ [ text "HOTKEY" ]
-      , text "Chromium-based browsers implement unified UI for hotkey preferences. Follow "
+      , text "Follow "
       , a
         [ href "chrome://extensions/shortcuts"
         , target "_blank"
         , onClick $ const OpenHotkeySettings ]
         [ text "this link" ]
-      , text " to set the hotkey."
+      , text " to set the hotkey in chrome preferences."
       ]
     else
       [ h3_ [ text "HOTKEY" ]
-      , text "Firefox implements unified UI for hotkey preferences. Follow "
+      , text "Follow "
       , a
         [ href "https://support.mozilla.org/en-US/kb/manage-extension-shortcuts-firefox"
         , target "_blank" ]
         [ text "this instruction" ]
-      , text " to change the default hotkey."
+      , text " to change the default hotkey in Firefox preferences."
       ]) <>
   [ h3_ [ text "GENERAL SETTINGS" ]
   , div_
@@ -389,6 +390,20 @@ renderRestoreDefaults pageState = div_ case pageState of
             , ref cancelRestoreRef
             ]
     ]
+
+renderDonateLink :: forall m a. H.ComponentHTML a () m
+renderDonateLink =
+  div [ id "dev-note" ]
+  [ text "🍩 This extension is free and "
+  , a [ href "https://github.com/klntsky/switch-to-audible-tab/", target "_blank" ]
+    [ text "open-source" ]
+  , text ". Consider donating if you like my work: "
+  , a [ href "https://paypal.me/klntsky", target "_blank" ]
+    [ text "Paypal" ]
+  , text ", "
+  , a [ href "https://liberapay.com/klntsky/donate", target "_blank" ]
+    [ text "Liberapay" ]
+  ]
 
 tooltip :: forall a o m. String -> H.ComponentHTML a o m
 tooltip str = span [ class_ (wrap "tooltip") ]

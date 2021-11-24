@@ -118,3 +118,8 @@ label {
   left: 50%;
   transform: translate(-50%, 0%);
 }
+
+#dev-note {
+    font-style: italic;
+    color: #555;
+}
