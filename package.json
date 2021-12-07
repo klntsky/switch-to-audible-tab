@@ -6,7 +6,7 @@
     "copy-polyfill": "cp node_modules/webextension-polyfill/dist/browser-polyfill.min.js dist/browser-polyfill.js",
     "build": "npm run copy-polyfill && spago bundle-app --to static/settings.js && npm run uglify",
     "uglify": "parcel build --no-source-maps --target browser --out-file static/settings.js static/settings.js",
-    "pack": "zip -r ./switch-to-audible-tab.xpi img static src/background.js manifest.json",
+    "pack": "zip -r ./switch-to-audible-tab.xpi img static dist src/background.js manifest.json && zip -r ./switch-to-audible-tab.zip img static dist src/background.js manifest.json",
     "pack-source": "zip -r ./switch-to-audible-tab-source.zip img src manifest.json README.md package.json package-lock.json static spago.dhall packages.dhall .gitignore LICENSE"
   },
   "repository": {
