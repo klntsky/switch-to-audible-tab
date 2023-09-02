@@ -1,5 +1,8 @@
 # Switch to audible tab
 
+![Mozilla Add-on Users](https://img.shields.io/amo/users/switch-to-audible-tab?label=AMO%20users)
+![Chrome Web Store Users](https://img.shields.io/chrome-web-store/users/obhmhiijebijngjodncffkecfiolonom?label=Chrome%20Web%20Store%20users)
+
 [Install from AMO](https://addons.mozilla.org/en-US/firefox/addon/switch-to-audible-tab/) / [Gitlab](https://gitlab.com/klntsky/switch-to-audible-tab) / [Github](https://github.com/8084/switch-to-audible-tab)
 
 ![preview](screenshot.png)
