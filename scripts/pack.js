@@ -13,33 +13,37 @@ const packages = [
     { manifest: 'manifest.chrome.json', output: 'switch-to-audible-tab.zip' },
 ];
 
-for (const target of packages) {
+const stageExtension = (manifest, stagingDirectory) => {
+    for (const entry of sharedEntries) {
+        fs.cpSync(
+            path.join(root, entry),
+            path.join(stagingDirectory, entry),
+            { recursive: true }
+        );
+    }
+
+    const stagedSource = path.join(stagingDirectory, 'src');
+    fs.mkdirSync(stagedSource);
+    for (const sourceFile of sourceFiles) {
+        fs.copyFileSync(
+            path.join(root, 'src', sourceFile),
+            path.join(stagedSource, sourceFile)
+        );
+    }
+
+    fs.copyFileSync(
+        path.join(root, manifest),
+        path.join(stagingDirectory, 'manifest.json')
+    );
+};
+
+const createPackage = target => {
     const stagingDirectory = fs.mkdtempSync(
         path.join(os.tmpdir(), 'switch-to-audible-tab-')
     );
 
     try {
-        for (const entry of sharedEntries) {
-            fs.cpSync(
-                path.join(root, entry),
-                path.join(stagingDirectory, entry),
-                { recursive: true }
-            );
-        }
-
-        const stagedSource = path.join(stagingDirectory, 'src');
-        fs.mkdirSync(stagedSource);
-        for (const sourceFile of sourceFiles) {
-            fs.copyFileSync(
-                path.join(root, 'src', sourceFile),
-                path.join(stagedSource, sourceFile)
-            );
-        }
-
-        fs.copyFileSync(
-            path.join(root, target.manifest),
-            path.join(stagingDirectory, 'manifest.json')
-        );
+        stageExtension(target.manifest, stagingDirectory);
 
         const output = path.join(root, target.output);
         fs.rmSync(output, { force: true });
@@ -60,4 +64,10 @@ for (const target of packages) {
     } finally {
         fs.rmSync(stagingDirectory, { recursive: true, force: true });
     }
+};
+
+if (require.main === module) {
+    packages.forEach(createPackage);
 }
+
+module.exports = { stageExtension };

@@ -54,3 +54,13 @@ npm install
 npm run build
 npm run pack
 ```
+
+## End-to-end tests
+
+The end-to-end suite loads the extension in real headless Chrome and uses a
+local page that emits a controllable audio tone.
+
+```
+npm run test:e2e:install
+npm run test:e2e
+```

@@ -49,8 +49,9 @@ const getActiveTab = async () => {
 };
 
 const updateIcon = isChecked => {
+    const icon = isChecked ? 'img/icon-checked.png' : 'img/128.png';
     return api.action.setIcon({
-        path: isChecked ? 'img/icon-checked.png' : 'img/128.png'
+        path: api.runtime.getURL(icon)
     });
 };
 

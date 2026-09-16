@@ -2,7 +2,9 @@
   "name": "switch-to-audible-tab",
   "private": true,
   "scripts": {
-    "test": "ava --verbose",
+    "test": "ava --verbose test/main.js",
+    "test:e2e": "npm run build && node --test test/e2e/audible-tab.test.js",
+    "test:e2e:install": "puppeteer browsers install chrome",
     "build": "spago bundle-app --to static/settings.js && npm run uglify",
     "uglify": "terser static/settings.js --compress --mangle --output static/settings.min.js && mv static/settings.min.js static/settings.js",
     "pack": "node scripts/pack.js",
@@ -14,6 +16,7 @@
   },
   "devDependencies": {
     "ava": "^1.4.1",
+    "puppeteer": "25.11.0",
     "purescript": "0.14.4",
     "spago": "0.20.9",
     "terser": "5.51.2"

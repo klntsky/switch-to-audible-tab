@@ -65,6 +65,7 @@ test('background registers MV3 menus and switches to an audible tab', async t =>
         },
         runtime: {
             onInstalled: event('runtime.onInstalled'),
+            getURL: path => `chrome-extension://test/${path}`,
             openOptionsPage: async () => {},
         },
         storage: {

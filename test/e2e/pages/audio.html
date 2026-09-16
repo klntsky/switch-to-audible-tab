@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>Controllable audio tab</title>
+  </head>
+  <body>
+    <h1>Controllable audio tab</h1>
+    <audio id="audio" loop controls></audio>
+    <output id="state">paused</output>
+
+    <script>
+      const sampleRate = 44100;
+      const duration = 2;
+      const samples = sampleRate * duration;
+      const buffer = new ArrayBuffer(44 + samples * 2);
+      const view = new DataView(buffer);
+
+      const writeString = (offset, value) => {
+        for (let index = 0; index < value.length; index++) {
+          view.setUint8(offset + index, value.charCodeAt(index));
+        }
+      };
+
+      writeString(0, 'RIFF');
+      view.setUint32(4, 36 + samples * 2, true);
+      writeString(8, 'WAVE');
+      writeString(12, 'fmt ');
+      view.setUint32(16, 16, true);
+      view.setUint16(20, 1, true);
+      view.setUint16(22, 1, true);
+      view.setUint32(24, sampleRate, true);
+      view.setUint32(28, sampleRate * 2, true);
+      view.setUint16(32, 2, true);
+      view.setUint16(34, 16, true);
+      writeString(36, 'data');
+      view.setUint32(40, samples * 2, true);
+
+      for (let index = 0; index < samples; index++) {
+        const sample = Math.sin(2 * Math.PI * 440 * index / sampleRate);
+        view.setInt16(44 + index * 2, sample * 0x2000, true);
+      }
+
+      const audio = document.querySelector('#audio');
+      const state = document.querySelector('#state');
+      audio.src = URL.createObjectURL(new Blob([buffer], { type: 'audio/wav' }));
+
+      const updateState = () => {
+        state.value = audio.paused ? 'paused' : 'playing';
+      };
+
+      audio.addEventListener('playing', updateState);
+      audio.addEventListener('pause', updateState);
+
+      window.audioTest = Object.freeze({
+        start: async () => {
+          await audio.play();
+          updateState();
+        },
+        pause: () => {
+          audio.pause();
+          updateState();
+        },
+        isPlaying: () => !audio.paused,
+      });
+    </script>
+  </body>
+</html>
