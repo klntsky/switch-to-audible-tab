@@ -1,16 +1,18 @@
-/* global browser exports */
+/* global browser chrome exports */
+
+const api = typeof browser !== 'undefined' ? browser : chrome;
 
 exports.isGoogle = navigator.vendor === "Google Inc.";
 
 exports.save_ = function (settings) {
     return function () {
-        return browser.storage.local.set({ settings: settings });
+        return api.storage.local.set({ settings: settings });
     };
 };
 
 exports.load_ = function (defaults) {
     return function () {
-        return browser.storage.local.get({ settings: defaults }).then(function (res) {
+        return api.storage.local.get({ settings: defaults }).then(function (res) {
             return res.settings;
         });
     };
@@ -54,5 +56,5 @@ exports.isValidDomain = function (v, opts) {
 };
 
 exports.openHotkeySettings = function () {
-    browser.tabs.create({url: 'chrome://extensions/shortcuts'});
+    api.tabs.create({url: 'chrome://extensions/shortcuts'});
 };

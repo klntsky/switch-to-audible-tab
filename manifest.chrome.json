@@ -7,11 +7,10 @@
         "128": "img/128.png"
     },
     "background": {
-        "scripts": ["src/background.js"]
+        "service_worker": "src/service-worker.js"
     },
     "options_ui": {
         "page": "static/settings.html",
-        "browser_style": false,
         "open_in_tab": true
     },
     "action": {
@@ -31,13 +30,5 @@
     "permissions": [
         "tabs", "storage", "contextMenus"
     ],
-    "browser_specific_settings": {
-        "gecko": {
-            "id": "{0cd726db-f954-44f2-bf4f-7ed0de734de2}",
-            "strict_min_version": "121.0",
-            "data_collection_permissions": {
-                "required": ["none"]
-            }
-        }
-    }
+    "minimum_chrome_version": "123"
 }

@@ -1,9 +1,9 @@
-/* global browser */
+/* global browser chrome */
 
-const isGoogle = navigator.vendor === "Google Inc.";
+const api = typeof browser !== 'undefined' ? browser : chrome;
+const isFirefox = typeof api.runtime.getBrowserInfo === 'function';
 
-/** Default settings */
-// This should be synchronised with Settings.purs
+/** Default settings. Keep in sync with Settings.purs. */
 const defaults = {
     includeMuted: true,
     allWindows: true,
@@ -18,100 +18,119 @@ const defaults = {
     notificationsFirst: true,
 };
 
-// A flag indicating that no tabs are selected by queries.
+// Flags returned by nextTab.
 const NoTabs = Symbol('NoTabs');
-// A flag indicating that the tab switching cycle was ended.
 const FromStart = Symbol('FromStart');
 
-let settings = null;
-// First active tab, i.e. the tab that was active when the user started
-// cycling through audible tabs.
-let firstActive = null; // or { id: <tab id>, windowId: <window id>, ... }
-// Whether we are waiting for tab activation (semaphore variable for switchTo)
-let waitingForActivation = false;
+const MARK_MENU_ID = 'mark-as-audible';
+const SETTINGS_MENU_ID = 'open-settings';
+const RUNTIME_STATE_KEY = 'runtimeState';
+
+let settings = defaults;
+
+let firstActive = null;
+let pendingActivationTabId = null;
 let lastTabs = [];
-
-// Tabs marked as audible by the user
 let marked = [];
-const MARK_MENU_ID = "mark-as-audible";
-const SETTINGS_MENU_ID = "open-settings";
+let possibleNotifications = new Map();
 
-// Used to follow notifications
-const possibleNotifications = new Map(); // tabId => timestamp
-
-const catcher = (f) => async function () {
+const catcher = f => async function () {
     try {
         return await f(...arguments);
-    } catch (e) {
-        console.log('Error in', unescape(f), e);
+    } catch (error) {
+        console.error(`Error in ${f.name || 'event handler'}`, error);
     }
 };
 
-const addMarkedTab = tab => {
-  if (!marked.some(mkd => mkd.id === tab.id)) {
-    marked.push(tab);
-  }
-};
-
-const removeMarkedTab = tab => {
-  marked = marked.filter(mkd => mkd.id !== tab.id);
+/** Returns the active tab in the currently focused window. */
+const getActiveTab = async () => {
+    const tabs = await api.tabs.query({ active: true, currentWindow: true });
+    return tabs[0] || null;
 };
 
 const updateIcon = isChecked => {
-    browser.browserAction.setIcon({
+    return api.action.setIcon({
         path: isChecked ? 'img/icon-checked.png' : 'img/128.png'
     });
 };
 
-/** Returns active tab in the current window. */
-const getActiveTab = async () => {
-    return browser.tabs.query({ active: true, currentWindow: true })
-        .then(x => x[0]);
-};
+const runSettingsMigrations = storedSettings => ({
+    ...defaults,
+    ...storedSettings,
+});
 
-const runSettingsMigrations = settings => {
-    // TODO: get a list of properties from defaults itself?
-    const added_props = [
-        'websitesOnlyIfNoAudible',
-        'followNotifications',
-        'notificationsTimeout',
-        'maxNotificationDuration',
-        'notificationsFirst'
-    ];
+/** Loads settings before any event handler tries to use them. */
+const loadSettings = async () => {
+    const result = await api.storage.local.get({ settings: defaults });
+    settings = runSettingsMigrations(result.settings);
 
-    for (let prop of added_props) {
-        if (typeof settings[prop] == 'undefined') {
-            settings[prop] = defaults[prop];
-        }
+    // Save added defaults so the options page and background agree after an
+    // update from an older version.
+    if (JSON.stringify(settings) !== JSON.stringify(result.settings)) {
+        await api.storage.local.set({ settings });
     }
 
     return settings;
 };
 
-/** Returns settings object */
-const loadSettings = catcher(async () => {
-    const r = await browser.storage.local.get({
-        settings: defaults
-    });
-
-    // Set global variable
-    settings = runSettingsMigrations(r.settings) ;
-
-    return r.settings;
-});
-
-browser.storage.onChanged.addListener((changes, area) => {
-    if (typeof changes.settings === 'object') {
-        settings = changes.settings.newValue;
-        updateMenuContexts(settings);
+const saveRuntimeState = () => api.storage.session.set({
+    [RUNTIME_STATE_KEY]: {
+        firstActive,
+        pendingActivationTabId,
+        lastTabs,
+        marked,
+        possibleNotifications: [...possibleNotifications.entries()],
     }
 });
 
-const sortTabs = tabs => {
-    if (firstActive)
-        tabs = [...tabs, firstActive];
+const loadRuntimeState = async () => {
+    const stored = (await api.storage.session.get(RUNTIME_STATE_KEY))[RUNTIME_STATE_KEY] || {};
 
-    // Sort by windowIds, then by indices.
+    firstActive = stored.firstActive || null;
+    pendingActivationTabId = stored.pendingActivationTabId || null;
+    lastTabs = Array.isArray(stored.lastTabs) ? stored.lastTabs : [];
+    marked = Array.isArray(stored.marked) ? stored.marked : [];
+    possibleNotifications = new Map(
+        Array.isArray(stored.possibleNotifications) ? stored.possibleNotifications : []
+    );
+
+    const activeTab = await getActiveTab();
+    if (!firstActive) {
+        firstActive = activeTab;
+    }
+    if (activeTab) {
+        await updateIcon(marked.some(tab => tab.id === activeTab.id));
+    }
+    await saveRuntimeState();
+};
+
+const settingsReady = loadSettings().catch(error => {
+    console.error('Unable to load settings; using defaults', error);
+    settings = defaults;
+});
+
+const runtimeStateReady = loadRuntimeState().catch(error => {
+    console.error('Unable to restore runtime state', error);
+});
+
+const addMarkedTab = tab => {
+    if (tab && !marked.some(item => item.id === tab.id)) {
+        marked.push(tab);
+    }
+};
+
+const removeMarkedTab = tab => {
+    if (tab) {
+        marked = marked.filter(item => item.id !== tab.id);
+    }
+};
+
+const sortTabs = tabs => {
+    if (firstActive) {
+        tabs = [...tabs, firstActive];
+    }
+
+    // Sort by window IDs, then by tab indices.
     tabs = tabs.sort((a, b) => {
         let ordering = a.windowId - b.windowId || a.index - b.index;
         if (settings.sortBackwards) {
@@ -120,9 +139,9 @@ const sortTabs = tabs => {
         return ordering;
     });
 
-    let ix = tabs.findIndex(x => x === firstActive);
-    if (ix != -1) {
-        tabs = [...tabs.slice(ix + 1), ...tabs.slice(0, ix)];
+    const index = tabs.findIndex(tab => tab === firstActive);
+    if (index !== -1) {
+        tabs = [...tabs.slice(index + 1), ...tabs.slice(0, index)];
     }
 
     return tabs;
@@ -140,117 +159,147 @@ const filterRepeating = tabs => {
     });
 };
 
-/** Given an array of tabs and the active tab, returns next tab's ID.
-    @param tabs {Tab[]}
-    @param activeTab {Tab}
-    @returns {Tab|NoTabs|FromStart}
-*/
+/**
+ * Given an array of tabs and the active tab, returns the next tab.
+ * @returns {object|NoTabs|FromStart}
+ */
 const nextTab = (tabs, activeTab) => {
-    if (!tabs.length)
+    if (!tabs.length) {
         return NoTabs;
+    }
 
-    for (let i = 0; i < tabs.length - 1; i++) {
-        if (tabs[i].id === activeTab.id) {
-            return tabs[i+1];
+    for (let index = 0; index < tabs.length - 1; index++) {
+        if (tabs[index].id === activeTab.id) {
+            return tabs[index + 1];
         }
-    };
+    }
 
     return FromStart;
 };
 
-browser.contextMenus.create({
-    id: MARK_MENU_ID,
-    type: "checkbox",
-    title: "Mark this tab as audible",
-    contexts: ["browser_action"],
-});
-
-browser.contextMenus.create({
-    id: SETTINGS_MENU_ID,
-    title: "Open Preferences",
-    contexts: ["browser_action"],
-});
-
-// Add an item to context menu for tabs.
-const updateMenuContexts = catcher(async settings => {
-    const contexts = ["browser_action"];
-    if (settings.menuOnTab && !isGoogle) {
-        contexts.push("tab");
+const updateMenuContexts = async currentSettings => {
+    const contexts = ['action'];
+    if (currentSettings.menuOnTab && isFirefox) {
+        contexts.push('tab');
     }
-    await browser.contextMenus.update(MARK_MENU_ID, {
-        contexts
+    await api.contextMenus.update(MARK_MENU_ID, { contexts });
+};
+
+const createContextMenus = async () => {
+    await api.contextMenus.removeAll();
+    api.contextMenus.create({
+        id: MARK_MENU_ID,
+        type: 'checkbox',
+        title: 'Mark this tab as audible',
+        contexts: ['action'],
     });
+    api.contextMenus.create({
+        id: SETTINGS_MENU_ID,
+        title: 'Open Preferences',
+        contexts: ['action'],
+    });
+    await updateMenuContexts(settings);
+};
+
+api.storage.onChanged.addListener((changes, area) => {
+    if (area === 'local' && changes.settings && changes.settings.newValue) {
+        settings = runSettingsMigrations(changes.settings.newValue);
+        updateMenuContexts(settings).catch(error => {
+            console.error('Unable to update context menu', error);
+        });
+    }
 });
 
-
-loadSettings().then(updateMenuContexts);
-getActiveTab().then(tab => firstActive = tab);
-
-// When some tab gets removed, check if we are referencing it.
-browser.tabs.onRemoved.addListener(tabId => {
-    if (firstActive.id === tabId) {
+api.tabs.onRemoved.addListener(catcher(async tabId => {
+    await runtimeStateReady;
+    if (firstActive && firstActive.id === tabId) {
         firstActive = null;
     }
-    marked = marked.filter(mkd => mkd.id !== tabId);
-    possibleNotifications.delete(tabId);
-});
-
-// Track the last active tab which was activated by the user or another
-// extension
-browser.tabs.onActivated.addListener(async ({ tabId, windowId }) => {
-    const checked = marked.some(mkd => mkd.id === tabId);
-    // no need to await
-    browser.contextMenus.update(MARK_MENU_ID, { checked });
-    updateIcon(checked);
-
-    if (waitingForActivation) {
-        waitingForActivation = false;
-    } else {
-        const index = (await browser.tabs.query({}).then(r => r.find(r => r.id == tabId))).index;
-
-        // This tab was activated by the user or another extension,
-        // therefore we need to set it as firstActive.
-        firstActive = { id: tabId, windowId, index };
+    if (pendingActivationTabId === tabId) {
+        pendingActivationTabId = null;
     }
-});
+    marked = marked.filter(tab => tab.id !== tabId);
+    possibleNotifications.delete(tabId);
+    await saveRuntimeState();
+}));
 
-browser.windows.onFocusChanged.addListener(catcher(async (windowId) => {
+// Track whether activation came from this extension or from the user/another
+// extension. The pending tab ID is persisted in case the worker is suspended
+// between requesting and observing activation.
+api.tabs.onActivated.addListener(catcher(async ({ tabId, windowId }) => {
+    await runtimeStateReady;
+
+    const checked = marked.some(tab => tab.id === tabId);
+    await Promise.all([
+        api.contextMenus.update(MARK_MENU_ID, { checked }).catch(() => {}),
+        updateIcon(checked),
+    ]);
+
+    if (pendingActivationTabId === tabId) {
+        pendingActivationTabId = null;
+    } else {
+        pendingActivationTabId = null;
+        const tab = await api.tabs.get(tabId);
+        firstActive = { id: tabId, windowId, index: tab.index };
+    }
+    await saveRuntimeState();
+}));
+
+api.windows.onFocusChanged.addListener(catcher(async windowId => {
+    await runtimeStateReady;
+    if (windowId === api.windows.WINDOW_ID_NONE) {
+        return;
+    }
+
     const activeTab = await getActiveTab();
-    const checked = marked.some(mkd => mkd.id === activeTab.id);
-    updateIcon(checked);
+    if (!activeTab) {
+        return;
+    }
+
+    await updateIcon(marked.some(tab => tab.id === activeTab.id));
     if (lastTabs.every(tab => tab.id !== activeTab.id)) {
         firstActive = activeTab;
+        await saveRuntimeState();
     }
 }));
 
-browser.browserAction.onClicked.addListener(catcher(async () => {
-    // Choose how to switch to the tab, depending on `settings.allWindows`.
-    // Maintain waitingForActivation flag.
+api.action.onClicked.addListener(catcher(async () => {
+    await Promise.all([settingsReady, runtimeStateReady]);
+
     const switchTo = async (tab, activeTab) => {
-
-        if (!tab || tab.id === activeTab.id || waitingForActivation)
+        if (!tab || tab.id === activeTab.id || pendingActivationTabId !== null) {
             return;
-
-        waitingForActivation = true;
-
-        await browser.tabs.update(tab.id, { active: true });
-
-        if (settings.allWindows) {
-            await browser.windows.update(tab.windowId, { focused: true });
         }
 
-        if (!settings.includeFirst) {
-            firstActive = null;
-        }
+        pendingActivationTabId = tab.id;
+        await saveRuntimeState();
 
-        waitingForActivation = false;
+        try {
+            await api.tabs.update(tab.id, { active: true });
+
+            if (settings.allWindows) {
+                await api.windows.update(tab.windowId, { focused: true });
+            }
+
+            if (!settings.includeFirst) {
+                firstActive = null;
+            }
+            await saveRuntimeState();
+        } catch (error) {
+            if (pendingActivationTabId === tab.id) {
+                pendingActivationTabId = null;
+                await saveRuntimeState();
+            }
+            throw error;
+        }
     };
 
     await updateMenuContexts(settings);
     const activeTab = await getActiveTab();
-    let tabs = [];
+    if (!activeTab) {
+        return;
+    }
 
-    // Modify query w.r.t. settings.allWindows preference
     const refine = query => {
         if (!settings.allWindows) {
             query.currentWindow = true;
@@ -258,51 +307,58 @@ browser.browserAction.onClicked.addListener(catcher(async () => {
         return query;
     };
 
-    tabs = [...tabs, ...await browser.tabs.query(refine({ audible: true }))];
+    let tabs = await api.tabs.query(refine({ audible: true }));
+    const areReallyAudible = tabs.length !== 0;
 
-    const areReallyAudible = tabs.length != 0;
+    if (settings.includeMuted) {
+        tabs = [...tabs, ...await api.tabs.query(refine({ muted: true }))];
+    }
 
-    if (settings.includeMuted)
-        tabs = [...tabs, ...await browser.tabs.query(refine({ muted: true }))];
-
-    if (marked.length)
+    if (marked.length) {
         tabs = [...tabs, ...marked];
+    }
 
-    // Include websites only if websitesOnlyIfAudible is false or
-    // there are no "really" audible tabs.
+    // Include configured websites unless they are restricted to the case where
+    // no tab is actually audible.
     if (!areReallyAudible || !settings.websitesOnlyIfNoAudible) {
         const permanentlyMarked = settings.markAsAudible.reduce(
-            (acc, { domain, enabled, withSubdomains }) => {
+            (patterns, { domain, enabled, withSubdomains }) => {
                 if (enabled) {
-                    acc.push(withSubdomains ? `*://*.${domain}/*` : `*://${domain}/*`);
+                    patterns.push(withSubdomains ? `*://*.${domain}/*` : `*://${domain}/*`);
                 }
-                return acc;
+                return patterns;
             }, []
         );
 
-        if (permanentlyMarked.length)
-            tabs = [...tabs, ...await browser.tabs.query(refine({ url: permanentlyMarked }))];
+        if (permanentlyMarked.length) {
+            tabs = [...tabs, ...await api.tabs.query(refine({ url: permanentlyMarked }))];
+        }
     }
 
     if (settings.followNotifications) {
-
-        // Extract notifications from possibleNotifications
         const now = Date.now();
-        let notifications = [...possibleNotifications.values()].filter(([start, end, tab]) => {
-            end = end || now;
-            return end - start < settings.maxNotificationDuration * 1000;
-        });
+        const notifications = [];
 
-        // Sort by starting time. Newest first.
+        for (const [tabId, notification] of possibleNotifications) {
+            const [start, end, tab] = notification;
+            const expired = end !== null
+                && now - end >= settings.notificationsTimeout * 1000;
+
+            if (expired) {
+                possibleNotifications.delete(tabId);
+            } else if ((end || now) - start < settings.maxNotificationDuration * 1000) {
+                notifications.push(notification);
+            }
+        }
+
+        // Newest notification first.
         notifications.sort((a, b) => b[0] - a[0]);
-        notifications = notifications.map(([_start, _end, tab]) => tab);
+        const notificationTabs = notifications.map(([_start, _end, tab]) => tab);
 
         if (settings.notificationsFirst) {
-            // Prepend before others
-            tabs = [...notifications, ...sortTabs(tabs)];
+            tabs = [...notificationTabs, ...sortTabs(tabs)];
         } else {
-            // Sort everything
-            tabs = sortTabs([...notifications, ...tabs]);
+            tabs = sortTabs([...notificationTabs, ...tabs]);
         }
     } else {
         tabs = sortTabs(tabs);
@@ -310,25 +366,24 @@ browser.browserAction.onClicked.addListener(catcher(async () => {
 
     tabs = filterRepeating(tabs);
 
-    if (firstActive)
+    if (firstActive) {
         tabs = tabs.filter(tab => tab.id !== firstActive.id);
+    }
 
     lastTabs = tabs;
+    await saveRuntimeState();
 
     const next = nextTab(tabs, activeTab);
 
     switch (next) {
     case NoTabs:
-        if (settings.includeFirst)
-            switchTo(firstActive, activeTab);
+        if (settings.includeFirst) {
+            await switchTo(firstActive, activeTab);
+        }
         break;
 
     case FromStart:
-        // If includeFirst is turned off
-        if (!settings.includeFirst
-            // or if the firstActive tab was removed
-            || !firstActive
-            || activeTab.id === firstActive.id) {
+        if (!settings.includeFirst || !firstActive || activeTab.id === firstActive.id) {
             await switchTo(tabs[0], activeTab);
         } else {
             await switchTo(firstActive, activeTab);
@@ -340,67 +395,78 @@ browser.browserAction.onClicked.addListener(catcher(async () => {
     }
 }));
 
-
-// WONTFIX: api is not supported, but also we can't use tabs context menus.
-!isGoogle && browser.contextMenus.onShown.addListener(async function(info, tab) {
-    if (info.menuIds.includes(MARK_MENU_ID)) {
-        let checked = false;
-
-        if (info.viewType === "sidebar") {
-            checked = marked.some(mkd => mkd.id === tab.id);
-        } else if (typeof info.viewType === 'undefined') {
-            // clicked the toolbar button
-            const activeTab = await getActiveTab();
-            checked = marked.some(mkd => mkd.id === activeTab.id);
+// Chrome does not support tab context-menu items for this feature. Firefox
+// also lets us refresh the checkbox just before its action menu is shown.
+if (isFirefox) {
+    api.contextMenus.onShown.addListener(catcher(async (info, tab) => {
+        await runtimeStateReady;
+        if (!info.menuIds.includes(MARK_MENU_ID)) {
+            return;
         }
 
-        await browser.contextMenus.update(MARK_MENU_ID, { checked });
-        await browser.contextMenus.refresh();
-    }
-});
+        let checked = false;
+        if (info.viewType === 'sidebar') {
+            checked = marked.some(item => item.id === tab.id);
+        } else if (typeof info.viewType === 'undefined') {
+            const activeTab = await getActiveTab();
+            checked = activeTab && marked.some(item => item.id === activeTab.id);
+        }
 
-browser.contextMenus.onClicked.addListener(async function(info, tab) {
+        await api.contextMenus.update(MARK_MENU_ID, { checked });
+        await api.contextMenus.refresh();
+    }));
+}
+
+api.contextMenus.onClicked.addListener(catcher(async (info, tab) => {
+    await runtimeStateReady;
+
+    if (info.menuItemId === SETTINGS_MENU_ID) {
+        await api.runtime.openOptionsPage();
+        return;
+    }
+
+    if (info.menuItemId !== MARK_MENU_ID) {
+        return;
+    }
 
     const activeTab = await getActiveTab();
-    if (info.menuItemId === SETTINGS_MENU_ID) {
-        browser.runtime.openOptionsPage();
-    } else if (info.menuItemId === MARK_MENU_ID) {
-        if (info.checked) {
-            addMarkedTab(tab);
-        } else {
-            removeMarkedTab(tab);
-        }
-
-        if (activeTab.id === tab.id) {
-            updateIcon(info.checked);
-        }
+    if (info.checked) {
+        addMarkedTab(tab);
+    } else {
+        removeMarkedTab(tab);
     }
-});
 
-browser.tabs.onUpdated.addListener(catcher(async (tabId, changeInfo, tab) => {
-    if (typeof changeInfo.audible == 'boolean') {
-        if (changeInfo.audible) {
-            if ((await getActiveTab()).id != tabId) {
-                possibleNotifications.set(tabId, [Date.now(), null, tab]);
-            }
-        } else {
-            if (possibleNotifications.has(tabId)) {
-                const [startTime, _end, _tab] = possibleNotifications.get(tabId);
-                const now = Date.now();
-                possibleNotifications.set(tabId, [startTime, now, tab]);
-                setTimeout(() => {
-                    // Delete only if we added it.
-                    if (possibleNotifications.get(tabId)[0] == startTime) {
-                        possibleNotifications.delete(tabId);
-                    }
-                }, settings.notificationsTimeout * 1000);
-            }
-        }
+    if (activeTab && tab && activeTab.id === tab.id) {
+        await updateIcon(info.checked);
     }
+    await saveRuntimeState();
 }));
 
-browser.runtime.onInstalled.addListener(details => {
-    if (details.reason == "install") {
-        browser.runtime.openOptionsPage();
+api.tabs.onUpdated.addListener(catcher(async (tabId, changeInfo, tab) => {
+    if (typeof changeInfo.audible !== 'boolean') {
+        return;
     }
-});
+
+    await runtimeStateReady;
+
+    if (changeInfo.audible) {
+        const activeTab = await getActiveTab();
+        if (!activeTab || activeTab.id !== tabId) {
+            possibleNotifications.set(tabId, [Date.now(), null, tab]);
+        }
+    } else if (possibleNotifications.has(tabId)) {
+        const [startTime] = possibleNotifications.get(tabId);
+        possibleNotifications.set(tabId, [startTime, Date.now(), tab]);
+    }
+
+    await saveRuntimeState();
+}));
+
+api.runtime.onInstalled.addListener(catcher(async details => {
+    await settingsReady;
+    await createContextMenus();
+
+    if (details.reason === 'install') {
+        await api.runtime.openOptionsPage();
+    }
+}));
