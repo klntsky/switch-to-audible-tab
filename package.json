@@ -3,9 +3,9 @@
   "private": true,
   "scripts": {
     "test": "ava --verbose",
-    "copy-polyfill": "cp node_modules/webextension-polyfill/dist/browser-polyfill.min.js dist/browser-polyfill.js",
+    "copy-polyfill": "mkdir -p dist && cp node_modules/webextension-polyfill/dist/browser-polyfill.min.js dist/browser-polyfill.js",
     "build": "npm run copy-polyfill && spago bundle-app --to static/settings.js && npm run uglify",
-    "uglify": "parcel build --no-source-maps --target browser --out-file static/settings.js static/settings.js",
+    "uglify": "terser static/settings.js --compress --mangle --output static/settings.min.js && mv static/settings.min.js static/settings.js",
     "pack": "zip -r ./switch-to-audible-tab.xpi img static dist src/background.js manifest.json && zip -r ./switch-to-audible-tab.zip img static dist src/background.js manifest.json",
     "pack-source": "zip -r ./switch-to-audible-tab-source.zip img src manifest.json README.md package.json package-lock.json static spago.dhall packages.dhall .gitignore LICENSE"
   },
@@ -15,7 +15,9 @@
   },
   "devDependencies": {
     "ava": "^1.4.1",
-    "parcel": "^1.12.3",
+    "purescript": "0.14.4",
+    "spago": "0.20.9",
+    "terser": "5.51.2",
     "webextension-polyfill": "^0.8.0",
     "webextensions-geckodriver": "^0.6.1"
   },

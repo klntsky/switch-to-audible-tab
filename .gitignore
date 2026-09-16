@@ -9,6 +9,7 @@
 /.purs*
 /.psa*
 *.xpi
+*.zip
 /.spago/
 /.cache/
 package-lock.json

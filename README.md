@@ -46,15 +46,8 @@ Although tuning advanced options is highly recommended, the defaults will always
 
 # Building from source
 
-You'll need to install spago & purescript. Via npm:
-
-```
-npm install spago purescript
-```
-
-Or use alternative methods.
-
-To build the extension and get the `.xpi` file, run:
+To install the pinned toolchain, build the extension, and create the `.xpi`
+and `.zip` packages, run:
 
 ```
 npm install
