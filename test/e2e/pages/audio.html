@@ -8,6 +8,7 @@
     <h1>Controllable audio tab</h1>
     <audio id="audio" loop controls></audio>
     <output id="state">paused</output>
+    <button id="arm">arm</button>
 
     <script>
       const sampleRate = 44100;
@@ -43,14 +44,24 @@
 
       const audio = document.querySelector('#audio');
       const state = document.querySelector('#state');
+      let playingEvents = 0;
+      let pauseEvents = 0;
       audio.src = URL.createObjectURL(new Blob([buffer], { type: 'audio/wav' }));
 
       const updateState = () => {
         state.value = audio.paused ? 'paused' : 'playing';
       };
 
-      audio.addEventListener('playing', updateState);
-      audio.addEventListener('pause', updateState);
+      audio.addEventListener('playing', () => {
+        playingEvents++;
+        updateState();
+      });
+      audio.addEventListener('pause', () => {
+        pauseEvents++;
+        updateState();
+      });
+
+      const parameters = new URLSearchParams(location.search);
 
       window.audioTest = Object.freeze({
         start: async () => {
@@ -61,8 +72,37 @@
           audio.pause();
           updateState();
         },
+        playFor: async milliseconds => {
+          if (audio.paused) {
+            await audio.play();
+          }
+          await new Promise(resolve => setTimeout(resolve, milliseconds));
+          audio.pause();
+          updateState();
+        },
         isPlaying: () => !audio.paused,
+        events: () => ({ playing: playingEvents, pause: pauseEvents }),
+        arm: (delay, duration) => {
+          setTimeout(() => window.audioTest.playFor(duration), delay);
+        },
       });
+
+      // A real click arms a delayed sound, so a test can observe playback that
+      // begins while the tab is in the background.
+      document.querySelector('#arm').addEventListener('click', () => {
+        window.audioTest.arm(
+          Number(parameters.get('arm') || 1500),
+          Number(parameters.get('duration') || 300)
+        );
+      });
+
+      // Lets a page start a sound on its own, so a test can observe playback
+      // that begins while the tab is in the background.
+      if (parameters.has('pulse')) {
+        window.audioTest.playFor(Number(parameters.get('pulse')));
+      } else if (parameters.has('autoplay')) {
+        window.audioTest.start();
+      }
     </script>
   </body>
 </html>

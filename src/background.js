@@ -316,7 +316,10 @@ api.action.onClicked.addListener(catcher(async () => {
     }
 
     if (marked.length) {
-        tabs = [...tabs, ...marked];
+        tabs = [
+            ...tabs,
+            ...marked.filter(tab => settings.allWindows || tab.windowId === activeTab.windowId),
+        ];
     }
 
     // Include configured websites unless they are restricted to the case where
@@ -347,7 +350,10 @@ api.action.onClicked.addListener(catcher(async () => {
 
             if (expired) {
                 possibleNotifications.delete(tabId);
-            } else if ((end || now) - start < settings.maxNotificationDuration * 1000) {
+            } else if (
+                (settings.allWindows || tab.windowId === activeTab.windowId)
+                && (end || now) - start < settings.maxNotificationDuration * 1000
+            ) {
                 notifications.push(notification);
             }
         }

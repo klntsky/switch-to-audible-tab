@@ -2,24 +2,26 @@
   "name": "switch-to-audible-tab",
   "private": true,
   "scripts": {
-    "test": "ava --verbose test/main.js",
-    "test:e2e": "npm run build && node --test test/e2e/audible-tab.test.js",
-    "test:e2e:install": "puppeteer browsers install chrome",
+    "test:e2e": "npm run build && node --test --test-concurrency=1 test/e2e/*.test.js && node --test --test-concurrency=1 test/e2e/firefox/*.test.js",
+    "test:e2e:chrome": "node --test --test-concurrency=1 test/e2e/*.test.js",
+    "test:e2e:firefox": "node --test --test-concurrency=1 test/e2e/firefox/*.test.js",
+    "test:e2e:install": "puppeteer browsers install chrome && puppeteer browsers install firefox && node -e \"require('geckodriver').download().then(console.log)\"",
     "build": "spago bundle-app --to static/settings.js && npm run uglify",
     "uglify": "terser static/settings.js --compress --mangle --output static/settings.min.js && mv static/settings.min.js static/settings.js",
     "pack": "node scripts/pack.js",
-    "pack-source": "zip -r ./switch-to-audible-tab-source.zip img src scripts manifest.json manifest.chrome.json README.md package.json package-lock.json static spago.dhall packages.dhall .gitignore LICENSE"
+    "pack-source": "zip -r ./switch-to-audible-tab-source.zip img src scripts manifest.json manifest.chrome.json README.md DEVELOPMENT.md package.json package-lock.json static spago.dhall packages.dhall .gitignore LICENSE"
   },
   "repository": {
     "type": "git",
     "url": "git+https://gitlab.com/klntsky/switch-to-audible-tab.git"
   },
   "devDependencies": {
-    "ava": "^1.4.1",
+    "@puppeteer/browsers": "3.2.2",
+    "geckodriver": "^6.1.1",
     "puppeteer": "25.11.0",
     "purescript": "0.14.4",
+    "selenium-webdriver": "^4.49.0",
     "spago": "0.20.9",
     "terser": "5.51.2"
-  },
-  "dependencies": {}
+  }
 }
