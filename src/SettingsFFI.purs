@@ -5,6 +5,7 @@ module SettingsFFI
        , isValidDomain
        , isGoogle
        , openHotkeySettings
+       , requestTabsPermission
        )
 where
 
@@ -29,9 +30,13 @@ load :: ValidSettings -> Aff ValidSettings
 load a = map (fromMaybe a <<< hush <<< decodeJson) <<<
          Promise.toAffE $ load_ a
 
+requestTabsPermission :: Aff Boolean
+requestTabsPermission = Promise.toAffE requestTabsPermission_
+
 foreign import setFocus :: Element -> Effect Unit
 foreign import save_ :: ValidSettings -> Effect (Promise Unit)
 foreign import load_ :: ValidSettings -> Effect (Promise Json)
 foreign import isValidDomain :: String -> Boolean
 foreign import isGoogle :: Boolean
 foreign import openHotkeySettings :: Effect Unit
+foreign import requestTabsPermission_ :: Effect (Promise Boolean)

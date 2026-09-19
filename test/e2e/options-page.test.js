@@ -39,6 +39,7 @@ test('validates, persists, restores, and applies options-page settings', {
     await setValue(options, '#duration-field', '4');
 
     await options.click('input[value="Add domain"]');
+    await harness.answerPermissionPrompt(['Tab', 'Return']);
     await options.waitForSelector('input[type="text"]');
     await setValue(options, 'input[type="text"]', 'media.test');
     await options.click('#withSubdomains0');
@@ -162,4 +163,4 @@ test('validates, persists, restores, and applies options-page settings', {
     await harness.activate(initial);
     await harness.pulseAudio(notification);
     await harness.expectActionSwitch(initial, notification);
-}));
+}, { headless: false }));

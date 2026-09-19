@@ -61,8 +61,8 @@ The suites run against real browsers. Fetch the pinned browsers and driver
 once, then run them:
 
 ```
-npm run test:e2e:install
-npm run test:e2e
+npm run test:install
+npm test
 ```
 
 See [DEVELOPMENT.md](DEVELOPMENT.md) for development notes.

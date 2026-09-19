@@ -58,3 +58,13 @@ exports.isValidDomain = function (v, opts) {
 exports.openHotkeySettings = function () {
     api.tabs.create({url: 'chrome://extensions/shortcuts'});
 };
+
+exports.requestTabsPermission_ = function () {
+    // Firefox keeps tabs as a required permission. Chrome requests it only
+    // when the user opts into matching tabs by domain.
+    if (!exports.isGoogle) {
+        return Promise.resolve(true);
+    }
+
+    return api.permissions.request({ permissions: ['tabs'] });
+};

@@ -3,11 +3,27 @@
 ## Tests
 
 ```
-npm run test:e2e:install   # pinned browsers + geckodriver
-npm run test:e2e           # both suites
-npm run test:e2e:chrome
-npm run test:e2e:firefox
+npm run test:install   # pinned browsers + geckodriver
+npm test               # both suites
+npm run test:chrome
+npm run test:firefox
 ```
+
+## Chrome suite
+
+The Chrome suite needs `xvfb-run`, `Xauth`, and `xdotool`. On Debian or Ubuntu,
+install them with:
+
+```
+sudo apt-get update
+sudo apt-get install --no-install-recommends xvfb xauth xdotool
+```
+
+Most Chrome tests run headlessly, but the optional `tabs` permission tests run
+headed Chrome inside Xvfb. The permission request is browser-owned UI, so it is
+not exposed through Puppeteer's page dialog API. `xdotool` sends keyboard input
+to that real prompt to cover both approval and rejection; `xauth` is required by
+`xvfb-run` when it creates the isolated display.
 
 ## Firefox suite
 

@@ -64,7 +64,7 @@ const resolveFirefoxBinary = async () => {
 
     if (!installed.length) {
         throw new Error(
-            'Firefox is not installed; run `npm run test:e2e:install` first'
+            'Firefox is not installed; run `npm run test:install` first'
         );
     }
 

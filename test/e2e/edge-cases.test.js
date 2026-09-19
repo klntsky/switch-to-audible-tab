@@ -20,6 +20,7 @@ test('keeps cross-window notifications out of a current-window-only search', {
 test('keeps playing muted audio eligible and deduplicates overlapping matches', {
     timeout: 20000,
 }, async () => withHarness(async harness => {
+    await harness.grantTabsPermission();
     const initial = await harness.newPage('silent');
     const candidate = await harness.newPage('audio', 'media.test');
 
@@ -44,7 +45,7 @@ test('keeps playing muted audio eligible and deduplicates overlapping matches', 
     });
     await harness.expectActionSwitch(initial, candidate);
     await harness.expectActionSwitch(candidate, initial);
-}));
+}, { headless: false }));
 
 test('resets repeated notifications and orders multiple notifications newest first', {
     timeout: 30000,
@@ -125,9 +126,12 @@ test('rapid repeated actions still settle on a single tab', {
     await harness.waitForSettledActivation();
 
     const active = await harness.activeTab();
+    const expectedTabIds = await Promise.all(
+        [initial, audible, other].map(page => harness.tab(page).then(tab => tab.id))
+    );
     assert.ok(
-        [audible.url(), other.url()].includes(active.url) || active.url === initial.url(),
-        `unexpected active tab: ${active.url}`
+        expectedTabIds.includes(active.id),
+        `unexpected active tab ID: ${active.id}`
     );
     assert.equal((await harness.runtimeState()).pendingActivationTabId, null);
 }));

@@ -5,6 +5,7 @@ const { withHarness } = require('./harness.js');
 test('applies muted-tab, domain, subdomain, and real-audio filters', {
     timeout: 25000,
 }, async () => withHarness(async harness => {
+    await harness.grantTabsPermission();
     const initial = await harness.newPage('silent');
     const muted = await harness.newPage('silent');
     await harness.setMuted(muted, true);
@@ -70,7 +71,7 @@ test('applies muted-tab, domain, subdomain, and real-audio filters', {
     await harness.pauseAudio(audible);
     await harness.activate(initial);
     await harness.expectActionSwitch(initial, marked);
-}));
+}, { headless: false }));
 
 test('limits searches to the current window when configured', {
     timeout: 20000,

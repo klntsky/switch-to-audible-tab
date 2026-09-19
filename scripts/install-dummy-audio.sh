@@ -169,7 +169,7 @@ report() {
 
     echo
     echo "Run the suite as a user in the pulse-access group:"
-    echo "  npm run test:e2e:firefox"
+    echo "  npm run test:firefox"
 }
 
 remove_all() {

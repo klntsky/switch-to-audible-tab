@@ -1,13 +1,16 @@
 const assert = require('node:assert/strict');
+const { execFile } = require('node:child_process');
 const fs = require('node:fs');
 const http = require('node:http');
 const os = require('node:os');
 const path = require('node:path');
 const { once } = require('node:events');
+const { promisify } = require('node:util');
 const puppeteer = require('puppeteer');
 const { stageExtension } = require('../../scripts/pack.js');
 
 const pagesDirectory = path.join(__dirname, 'pages');
+const execFileAsync = promisify(execFile);
 
 const defaultSettings = Object.freeze({
     includeMuted: true,
@@ -69,7 +72,7 @@ const startServer = async () => {
 };
 
 class ExtensionHarness {
-    static async create() {
+    static async create({ headless = true } = {}) {
         const extensionPath = fs.mkdtempSync(
             path.join(os.tmpdir(), 'audible-tab-extension-')
         );
@@ -79,7 +82,7 @@ class ExtensionHarness {
         try {
             stageExtension('manifest.chrome.json', extensionPath);
             browser = await puppeteer.launch({
-                headless: true,
+                headless,
                 pipe: true,
                 enableExtensions: true,
                 ignoreDefaultArgs: ['--mute-audio'],
@@ -142,11 +145,16 @@ class ExtensionHarness {
     }
 
     async newPage(name = 'silent', host) {
+        const existingTabIds = new Set((await this.tabs()).map(tab => tab.id));
         const page = await this.browser.newPage();
         await page.goto(this.fixtureUrl(name, host));
         if (name === 'audio') {
             await page.waitForFunction(() => Boolean(window.audioTest));
         }
+        const createdTab = (await this.tabs()).find(tab => !existingTabIds.has(tab.id));
+        assert.ok(createdTab, 'new browser page did not create a tab');
+        page.extensionTabId = createdTab.id;
+        page.extensionWindowId = createdTab.windowId;
         return page;
     }
 
@@ -167,15 +175,15 @@ class ExtensionHarness {
         if (name === 'audio') {
             await page.waitForFunction(() => Boolean(window.audioTest));
         }
+        page.extensionTabId = created.tabId;
         page.extensionWindowId = created.windowId;
         return page;
     }
 
     async tab(page) {
-        return this.worker.evaluate(async url => {
-            const tabs = await chrome.tabs.query({ url });
-            return tabs[0] || null;
-        }, page.url());
+        return this.worker.evaluate(tabId =>
+            chrome.tabs.get(tabId).catch(() => null),
+        page.extensionTabId);
     }
 
     async activeTab() {
@@ -187,6 +195,53 @@ class ExtensionHarness {
 
     async tabs() {
         return this.worker.evaluate(() => chrome.tabs.query({}));
+    }
+
+    async hasTabsPermission() {
+        return this.worker.evaluate(() =>
+            chrome.permissions.contains({ permissions: ['tabs'] })
+        );
+    }
+
+    async answerPermissionPrompt(keys) {
+        const browserProcess = this.browser.process();
+        assert.ok(browserProcess, 'Chrome process is unavailable');
+
+        const { stdout } = await execFileAsync('xdotool', [
+            'search',
+            '--sync',
+            '--onlyvisible',
+            '--pid',
+            String(browserProcess.pid),
+        ], { timeout: 5000 });
+        const windows = stdout.trim().split(/\s+/).filter(Boolean);
+        assert.ok(windows.length > 0, 'could not find the Chrome window');
+
+        const window = windows.at(-1);
+        await new Promise(resolve => setTimeout(resolve, 500));
+        await execFileAsync('xdotool', ['windowfocus', '--sync', window]);
+        await execFileAsync('xdotool', [
+            'key',
+            '--window',
+            window,
+            '--clearmodifiers',
+            ...keys,
+        ]);
+    }
+
+    async grantTabsPermission() {
+        if (await this.hasTabsPermission()) {
+            return;
+        }
+
+        const options = await this.openOptions();
+        await options.click('input[value="Add domain"]');
+        await this.answerPermissionPrompt(['Tab', 'Return']);
+        await waitFor(
+            () => this.hasTabsPermission(),
+            'tabs permission was not granted'
+        );
+        await options.close();
     }
 
     async activate(page) {
@@ -369,8 +424,8 @@ class ExtensionHarness {
     }
 }
 
-const withHarness = async callback => {
-    const harness = await ExtensionHarness.create();
+const withHarness = async (callback, options) => {
+    const harness = await ExtensionHarness.create(options);
     try {
         return await callback(harness);
     } finally {

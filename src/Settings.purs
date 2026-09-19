@@ -428,12 +428,14 @@ handleAction (Click button) = do
         _markAsAudible %~
         (\arr -> fromMaybe arr $ A.deleteAt index arr)
     AddDomain -> do
-      modifySettings $
-        _markAsAudible %~
-        (_ <> pure { domain: ""
-                   , enabled: true
-                   , withSubdomains: false
-                   })
+      granted <- H.liftAff FFI.requestTabsPermission
+      when granted do
+        modifySettings $
+          _markAsAudible %~
+          (_ <> pure { domain: ""
+                     , enabled: true
+                     , withSubdomains: false
+                     })
     RestoreDefaults -> do
       setPageState RestoreConfirmation
       H.getRef cancelRestoreRef >>= \maybeElem -> do
@@ -454,22 +456,26 @@ handleAction (TextInput input) = do
       modifySettings $ _maxNotificationDuration .~ str
   saveSettings
 handleAction (Toggle checkbox value) = do
-  modifySettings $
-    case checkbox of
-      IncludeMuted  -> (_ { includeMuted  = value })
-      AllWindows    -> (_ { allWindows    = value })
-      IncludeFirst  -> (_ { includeFirst  = value })
-      SortBackwards -> (_ { sortBackwards = value })
-      MenuOnTab     -> (_ { menuOnTab     = value })
-      WebsitesOnlyIfNoAudible -> (_ { websitesOnlyIfNoAudible = value })
-      DomainEnabled index ->
-        _markAsAudible <<< ix index %~ set _enabled value
-      DomainWithSubdomains index ->
-        _markAsAudible <<< ix index %~ set _withSubdomains value
-      FollowNotifications ->
-        _followNotifications .~ value
-      NotificationsFirst ->
-        _notificationsFirst .~ value
+  granted <- case checkbox of
+    DomainEnabled _ | value -> H.liftAff FFI.requestTabsPermission
+    _ -> pure true
+  when granted do
+    modifySettings $
+      case checkbox of
+        IncludeMuted  -> (_ { includeMuted  = value })
+        AllWindows    -> (_ { allWindows    = value })
+        IncludeFirst  -> (_ { includeFirst  = value })
+        SortBackwards -> (_ { sortBackwards = value })
+        MenuOnTab     -> (_ { menuOnTab     = value })
+        WebsitesOnlyIfNoAudible -> (_ { websitesOnlyIfNoAudible = value })
+        DomainEnabled index ->
+          _markAsAudible <<< ix index %~ set _enabled value
+        DomainWithSubdomains index ->
+          _markAsAudible <<< ix index %~ set _withSubdomains value
+        FollowNotifications ->
+          _followNotifications .~ value
+        NotificationsFirst ->
+          _notificationsFirst .~ value
   saveSettings
 handleAction OpenHotkeySettings = do
   H.liftEffect FFI.openHotkeySettings

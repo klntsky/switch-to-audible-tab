@@ -1,9 +1,11 @@
+const assert = require('node:assert/strict');
 const { test } = require('node:test');
 const { withHarness } = require('./harness.js');
 
 test('cycles audible tabs in both directions and optionally includes the initial tab', {
     timeout: 30000,
 }, async () => withHarness(async harness => {
+    assert.equal(await harness.hasTabsPermission(), false);
     await harness.setSettings({ followNotifications: false });
 
     const initial = await harness.newPage('silent');
